@@ -35,8 +35,10 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>DYOR Narrative Scan</h1>
-        <p>Paste a Solana contract address and we'll unpack the narrative.</p>
+        <div className="app-header-content">
+          <h1>DYOR Narrative Scan</h1>
+          <p>Paste a Solana contract address and we'll unpack the narrative with AI-powered analysis.</p>
+        </div>
       </header>
 
       <main className="app-main">
@@ -46,6 +48,20 @@ function App() {
 
         {result && <ScanResult result={result} />}
       </main>
+
+      <footer className="app-footer">
+        <div className="app-footer-content">
+          <div className="app-footer-links">
+            <a href="#about">About</a>
+            <a href="#how-it-works">How It Works</a>
+            <a href="#docs">Documentation</a>
+            <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub</a>
+          </div>
+          <div className="app-footer-text">
+            Built with React, Vite, OpenAI & Supabase • Always DYOR
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
