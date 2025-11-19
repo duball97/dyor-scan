@@ -2,12 +2,11 @@ import React, { useState } from "react";
 
 function ScanForm({ onScan, loading }) {
   const [contractAddress, setContractAddress] = useState("");
-  const [forceRefresh, setForceRefresh] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!contractAddress.trim()) return;
-    onScan(contractAddress.trim(), forceRefresh);
+    onScan(contractAddress.trim());
   };
 
   return (
@@ -20,15 +19,6 @@ function ScanForm({ onScan, loading }) {
           value={contractAddress}
           onChange={(e) => setContractAddress(e.target.value)}
         />
-      </label>
-
-      <label className="checkbox">
-        <input
-          type="checkbox"
-          checked={forceRefresh}
-          onChange={(e) => setForceRefresh(e.target.checked)}
-        />
-        Force fresh scan (ignore cache)
       </label>
 
       <button type="submit" disabled={loading}>

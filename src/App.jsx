@@ -36,7 +36,7 @@ function AppContent() {
     scanSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleScan = async (contractAddress, forceRefresh) => {
+  const handleScan = async (contractAddress) => {
     setLoading(true);
     setErrorMsg("");
     setResult(null);
@@ -44,7 +44,7 @@ function AppContent() {
       const res = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contractAddress, forceRefresh }),
+        body: JSON.stringify({ contractAddress }),
       });
 
       if (!res.ok) {
