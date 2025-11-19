@@ -59,6 +59,7 @@ body::before {
 .logo {
   display: flex;
   align-items: center;
+  text-decoration: none;
 }
 
 .logo-text {
@@ -1257,9 +1258,10 @@ body::before {
 
 /* Documentation Page Styles */
 .docs-page {
-  min-height: 100vh;
+  min-height: calc(100vh - 200px);
   background: #000000;
-  padding-top: 80px;
+  padding-top: 48px;
+  flex: 1;
 }
 
 .docs-container {
