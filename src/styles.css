@@ -673,6 +673,127 @@ body::before {
   letter-spacing: 0.3px;
 }
 
+.market-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid #1a1a1a;
+  border-left: 2px solid #404040;
+  border-radius: 2px;
+}
+
+.stat-label {
+  font-size: 10px;
+  color: #808080;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.stat-value {
+  font-size: 18px;
+  color: #e0e0e0;
+  font-weight: 600;
+  font-family: 'Orbitron', sans-serif;
+  letter-spacing: 0.5px;
+}
+
+.stat-value.positive {
+  color: #4ade80;
+}
+
+.stat-value.negative {
+  color: #fca5a5;
+}
+
+.dex-link {
+  display: inline-block;
+  color: #c0c0c0;
+  text-decoration: none;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  padding: 8px 16px;
+  border: 1px solid #2a2a2a;
+  border-radius: 2px;
+  transition: all 0.2s;
+}
+
+.dex-link:hover {
+  border-color: #c0c0c0;
+  background: rgba(192, 192, 192, 0.05);
+}
+
+.socials-list {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.social-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid #1a1a1a;
+  border-radius: 2px;
+  color: #c0c0c0;
+  text-decoration: none;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  transition: all 0.2s;
+}
+
+.social-item:hover {
+  border-color: #c0c0c0;
+  background: rgba(192, 192, 192, 0.05);
+}
+
+.security-risks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.risk-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  background: rgba(185, 28, 28, 0.1);
+  border: 1px solid #b91c1c;
+  border-left: 3px solid #b91c1c;
+  border-radius: 2px;
+}
+
+.risk-level {
+  font-size: 10px;
+  padding: 4px 8px;
+  background: rgba(185, 28, 28, 0.3);
+  border-radius: 2px;
+  color: #fca5a5;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.risk-description {
+  font-size: 13px;
+  color: #ff8888;
+  letter-spacing: 0.5px;
+  line-height: 1.6;
+}
+
 @media (max-width: 768px) {
   .site-header {
     padding: 16px 20px;

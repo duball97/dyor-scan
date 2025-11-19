@@ -73,12 +73,25 @@ dyor-scan/
   vercel.json        # Vercel config
 ```
 
+## Data Sources
+
+The scanner fetches data from:
+- **DexScreener API** (FREE) - Token prices, liquidity, volume, social links
+- **RugCheck API** (FREE) - Token safety analysis and risk assessment
+
 ## Next Steps / TODOs
 
-- [ ] Replace Chain Insight stub with real API integration
+- [ ] Add Helius API for enhanced metadata (optional)
 - [ ] Add web search for evidence gathering
-- [ ] Add Twitter/X lore tweet analysis
-- [ ] Add social profile verification
+- [ ] Add Twitter/X lore tweet analysis  
+- [ ] Add Solscan API for transaction history
 - [ ] Add authentication (optional)
 - [ ] Add RLS policies in Supabase
+
+## API Keys Needed
+
+- Supabase URL and keys (required)
+- OpenAI API key (required)
+- Helius API key (optional - for better metadata)
+- No keys needed for DexScreener or RugCheck!
 

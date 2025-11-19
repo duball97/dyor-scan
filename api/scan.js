@@ -45,23 +45,139 @@ async function saveScan(contractAddress, result) {
   return data;
 }
 
-// TODO: replace with real Chain Insight API call
-async function getChainInsightSummaryStub(contractAddress) {
-  // For now, just return a fake summary to test the pipeline
-  return {
-    projectSummary: `
-Token $JPM is a Solana meme token riding the narrative that JPMorgan has launched JPM Coin,
-a blockchain-based deposit token for institutional clients. It references JPMorgan and
-traditional finance, but does not claim to be officially affiliated.
-`,
-    tokenName: "JPM Meme",
-    symbol: "JPM",
-    socials: {
-      website: "https://example.com",
-      x: "https://x.com/jpm_meme",
-      telegram: "https://t.me/jpm_meme",
-    },
-  };
+// Fetch token data from DexScreener
+async function getDexScreenerData(contractAddress) {
+  try {
+    const response = await fetch(
+      `https://api.dexscreener.com/latest/dex/tokens/${contractAddress}`
+    );
+    
+    if (!response.ok) {
+      throw new Error(`DexScreener API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (!data.pairs || data.pairs.length === 0) {
+      throw new Error("No trading pairs found for this token");
+    }
+    
+    // Get the pair with highest liquidity
+    const mainPair = data.pairs.sort((a, b) => 
+      (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
+    )[0];
+    
+    return {
+      tokenName: mainPair.baseToken.name,
+      symbol: mainPair.baseToken.symbol,
+      priceUsd: mainPair.priceUsd,
+      volume24h: mainPair.volume?.h24,
+      liquidity: mainPair.liquidity?.usd,
+      priceChange24h: mainPair.priceChange?.h24,
+      socials: {
+        website: mainPair.info?.websites?.[0]?.url || null,
+        x: mainPair.info?.socials?.find(s => s.type === "twitter")?.url || null,
+        telegram: mainPair.info?.socials?.find(s => s.type === "telegram")?.url || null,
+      },
+      dexUrl: mainPair.url,
+    };
+  } catch (error) {
+    console.error("DexScreener fetch error:", error);
+    throw error;
+  }
+}
+
+// Fetch token safety data from RugCheck
+async function getRugCheckData(contractAddress) {
+  try {
+    const response = await fetch(
+      `https://api.rugcheck.xyz/v1/tokens/${contractAddress}/report`
+    );
+    
+    if (!response.ok) {
+      // RugCheck might not have data for all tokens
+      return null;
+    }
+    
+    const data = await response.json();
+    return {
+      riskLevel: data.riskLevel || "unknown",
+      risks: data.risks || [],
+      score: data.score || null,
+    };
+  } catch (error) {
+    console.error("RugCheck fetch error:", error);
+    return null;
+  }
+}
+
+// Generate project summary from available data
+async function generateProjectSummary(tokenData, rugCheckData) {
+  const { tokenName, symbol, socials, priceUsd, liquidity } = tokenData;
+  
+  let summary = `Token ${symbol}`;
+  
+  if (tokenName) {
+    summary += ` (${tokenName})`;
+  }
+  
+  summary += ` is a Solana-based token`;
+  
+  if (liquidity) {
+    summary += ` with $${(liquidity / 1000000).toFixed(2)}M in liquidity`;
+  }
+  
+  if (priceUsd) {
+    summary += ` trading at $${priceUsd}`;
+  }
+  
+  summary += `.`;
+  
+  if (socials.website || socials.x || socials.telegram) {
+    summary += ` The project maintains`;
+    const socialList = [];
+    if (socials.website) socialList.push("a website");
+    if (socials.x) socialList.push("Twitter/X presence");
+    if (socials.telegram) socialList.push("Telegram community");
+    summary += ` ${socialList.join(", ")}.`;
+  }
+  
+  if (rugCheckData && rugCheckData.risks && rugCheckData.risks.length > 0) {
+    summary += ` Security analysis identified ${rugCheckData.risks.length} potential risk factor(s).`;
+  }
+  
+  return summary;
+}
+
+async function getTokenData(contractAddress) {
+  try {
+    // Fetch data from multiple sources in parallel
+    const [dexData, rugData] = await Promise.all([
+      getDexScreenerData(contractAddress),
+      getRugCheckData(contractAddress),
+    ]);
+    
+    // Generate summary from collected data
+    const projectSummary = await generateProjectSummary(dexData, rugData);
+    
+    return {
+      projectSummary,
+      tokenName: dexData.tokenName,
+      symbol: dexData.symbol,
+      socials: dexData.socials,
+      marketData: {
+        price: dexData.priceUsd,
+        volume24h: dexData.volume24h,
+        liquidity: dexData.liquidity,
+        priceChange24h: dexData.priceChange24h,
+        dexUrl: dexData.dexUrl,
+      },
+      securityData: rugData,
+    };
+  } catch (error) {
+    console.error("getTokenData error:", error);
+    throw new Error(`Failed to fetch token data: ${error.message}`);
+  }
 }
 
 async function extractNarrativeClaim(projectSummary) {
@@ -247,18 +363,18 @@ export default async function handler(req, res) {
       }
     }
 
-    // 2) Chain Insight summary (stub for now)
-    const ci = await getChainInsightSummaryStub(contractAddress);
+    // 2) Fetch real token data from DexScreener + RugCheck
+    const tokenData = await getTokenData(contractAddress);
 
     // 3) Narrative extraction
     const { narrative_claim, entities } = await extractNarrativeClaim(
-      ci.projectSummary
+      tokenData.projectSummary
     );
 
     // 4) provisional v0 classification
     const { verdict, reasoning } = await classifyNarrativeV0({
       narrativeClaim: narrative_claim,
-      projectSummary: ci.projectSummary,
+      projectSummary: tokenData.projectSummary,
     });
 
     // 5) User notes
@@ -268,19 +384,21 @@ export default async function handler(req, res) {
       reasoning,
     });
 
-    // 6) Assemble result (v0 – minimal)
+    // 6) Assemble result
     const result = {
       contractAddress,
-      projectSummary: ci.projectSummary,
-      tokenName: ci.tokenName,
-      symbol: ci.symbol,
+      projectSummary: tokenData.projectSummary,
+      tokenName: tokenData.tokenName,
+      symbol: tokenData.symbol,
       narrativeClaim: narrative_claim,
       entities,
+      marketData: tokenData.marketData,
+      socials: tokenData.socials,
+      securityData: tokenData.securityData,
       loreTweet: null, // TODO: add later
       verdict,
       verdictReasoning: reasoning,
       evidence: [], // TODO: web search + tweets
-      socialProfiles: [], // TODO: socials analysis
       notesForUser,
     };
 

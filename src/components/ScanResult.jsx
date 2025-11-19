@@ -23,6 +23,9 @@ function ScanResult({ result }) {
     projectSummary,
     entities,
     cached,
+    marketData,
+    socials,
+    securityData,
   } = result;
 
   return (
@@ -39,6 +42,82 @@ function ScanResult({ result }) {
           {cached && <span className="cached-tag">cached</span>}
         </div>
       </div>
+
+      {marketData && (
+        <div className="result-section">
+          <h3>Market Data</h3>
+          <div className="market-stats">
+            {marketData.price && (
+              <div className="stat">
+                <span className="stat-label">Price</span>
+                <span className="stat-value">${parseFloat(marketData.price).toFixed(8)}</span>
+              </div>
+            )}
+            {marketData.liquidity && (
+              <div className="stat">
+                <span className="stat-label">Liquidity</span>
+                <span className="stat-value">${(marketData.liquidity / 1000000).toFixed(2)}M</span>
+              </div>
+            )}
+            {marketData.volume24h && (
+              <div className="stat">
+                <span className="stat-label">24h Volume</span>
+                <span className="stat-value">${(marketData.volume24h / 1000000).toFixed(2)}M</span>
+              </div>
+            )}
+            {marketData.priceChange24h && (
+              <div className="stat">
+                <span className="stat-label">24h Change</span>
+                <span className={`stat-value ${marketData.priceChange24h >= 0 ? 'positive' : 'negative'}`}>
+                  {marketData.priceChange24h >= 0 ? '+' : ''}{marketData.priceChange24h.toFixed(2)}%
+                </span>
+              </div>
+            )}
+          </div>
+          {marketData.dexUrl && (
+            <a href={marketData.dexUrl} target="_blank" rel="noopener noreferrer" className="dex-link">
+              View on DexScreener →
+            </a>
+          )}
+        </div>
+      )}
+
+      {socials && (socials.website || socials.x || socials.telegram) && (
+        <div className="result-section">
+          <h3>Social Links</h3>
+          <div className="socials-list">
+            {socials.website && (
+              <a href={socials.website} target="_blank" rel="noopener noreferrer" className="social-item">
+                🌐 Website
+              </a>
+            )}
+            {socials.x && (
+              <a href={socials.x} target="_blank" rel="noopener noreferrer" className="social-item">
+                𝕏 Twitter
+              </a>
+            )}
+            {socials.telegram && (
+              <a href={socials.telegram} target="_blank" rel="noopener noreferrer" className="social-item">
+                📱 Telegram
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
+      {securityData && securityData.risks && securityData.risks.length > 0 && (
+        <div className="result-section">
+          <h3>Security Risks</h3>
+          <div className="security-risks">
+            {securityData.risks.map((risk, idx) => (
+              <div key={idx} className="risk-item">
+                <span className="risk-level">{risk.level}</span>
+                <span className="risk-description">{risk.description}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="result-section">
         <h3>What this token is saying</h3>
