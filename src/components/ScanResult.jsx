@@ -43,6 +43,15 @@ function ScanResult({ result }) {
         </div>
       </div>
 
+      {result.hasMarketData === false && (
+        <div className="result-section">
+          <div className="warning-box">
+            <h3>⚠️ No Market Data Available</h3>
+            <p>This token has no trading pairs on decentralized exchanges. It may be very new, unlaunched, or have no liquidity. Exercise extreme caution.</p>
+          </div>
+        </div>
+      )}
+
       {marketData && (
         <div className="result-section">
           <h3>Market Data</h3>
@@ -169,12 +178,32 @@ function ScanResult({ result }) {
         <pre className="summary-pre">{projectSummary}</pre>
       </div>
 
-      <div className="result-section">
-        <h3>Debug JSON</h3>
-        <pre className="debug-pre">
-          {JSON.stringify(result, null, 2)}
-        </pre>
-      </div>
+      {result.redFlags && result.redFlags.length > 0 && (
+        <div className="result-section">
+          <h3>⚠️ Red Flags</h3>
+          <ul className="red-flags-list">
+            {result.redFlags.map((flag, idx) => (
+              <li key={idx}>{flag}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {result.confidence && (
+        <div className="result-section">
+          <h3>Analysis Confidence</h3>
+          <div className="confidence-indicator">
+            <span className={`confidence-level confidence-${result.confidence}`}>
+              {result.confidence.toUpperCase()}
+            </span>
+            <p className="confidence-note">
+              {result.confidence === 'high' && 'We have strong evidence to support this verdict.'}
+              {result.confidence === 'medium' && 'This verdict is based on available information, but more research is recommended.'}
+              {result.confidence === 'low' && 'Limited information available. Exercise caution and do thorough research.'}
+            </p>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
