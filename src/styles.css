@@ -163,7 +163,7 @@ body::before {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 64px;
-  align-items: center;
+  align-items: start;
   position: relative;
 }
 
@@ -247,6 +247,20 @@ body::before {
 .hero-visual {
   position: relative;
   z-index: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.hero-result {
+  width: 100%;
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-self: start;
 }
 
 .visual-grid {
@@ -842,6 +856,9 @@ body::before {
   border: 1px solid #2a2a2a;
   position: relative;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
 }
 
 .scan-result::before {
@@ -854,15 +871,70 @@ body::before {
   background: linear-gradient(90deg, transparent 0%, #c0c0c0 50%, transparent 100%);
 }
 
+.result-actions {
+  margin-bottom: 32px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-copy-report {
+  padding: 10px 20px;
+  border-radius: 2px;
+  border: 1px solid #606060;
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+  color: #c0c0c0;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Poppins', sans-serif;
+}
+
+.btn-copy-report:hover {
+  border-color: #c0c0c0;
+  background: linear-gradient(135deg, #2a2a2a 0%, #3a3a3a 100%);
+  transform: translateY(-1px);
+}
+
+.result-summary {
+  margin-bottom: 32px;
+  padding: 24px;
+  background: linear-gradient(135deg, #0a0a0a 0%, #151515 100%);
+  border: 1px solid #2a2a2a;
+  border-left: 3px solid #606060;
+  border-radius: 2px;
+}
+
+.result-summary h3 {
+  margin: 0 0 16px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #c0c0c0;
+  text-transform: uppercase;
+}
+
+.result-summary p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #a0a0a0;
+  letter-spacing: 0.2px;
+}
+
 .result-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 24px;
-  margin-bottom: 48px;
-  padding-bottom: 32px;
+  margin-bottom: 24px;
+  padding-bottom: 24px;
   border-bottom: 1px solid #1a1a1a;
   position: relative;
+  flex-shrink: 0;
 }
 
 .result-header::after {
@@ -952,6 +1024,7 @@ body::before {
   padding-top: 32px;
   border-top: 1px solid #151515;
   position: relative;
+  flex-shrink: 0;
 }
 
 .result-section:first-of-type {
