@@ -1,194 +1,112 @@
 # API Distribution Guide
 
-This guide explains how to distribute DYOR Scanner as an API for external platforms and users.
+This guide explains how external platforms and users can integrate DYOR Scanner into their applications.
 
 ## Overview
 
-The DYOR Scanner API allows third-party platforms to integrate token analysis capabilities into their own applications. The API includes:
+The DYOR Scanner API allows third-party platforms to analyze Solana tokens programmatically. Simply make HTTP requests to our API endpoint - no database setup or infrastructure required on your end.
 
-- API key authentication
-- Rate limiting per API key
-- Usage tracking and analytics
-- Webhook support (optional)
-- Multiple pricing tiers
+## Quick Start
 
-## Setup
+### Basic Usage (No API Key Required)
 
-### 1. Database Schema
-
-Add these tables to your Supabase database:
-
-```sql
--- API Keys table
-create table public.api_keys (
-  id bigint generated always as identity primary key,
-  api_key text not null unique,
-  key_name text not null,
-  user_email text,
-  tier text default 'free' check (tier in ('free', 'starter', 'pro', 'enterprise')),
-  rate_limit_per_minute integer default 10,
-  rate_limit_per_day integer default 100,
-  is_active boolean default true,
-  created_at timestamptz default now(),
-  expires_at timestamptz,
-  last_used_at timestamptz
-);
-
-create index api_keys_api_key_idx on public.api_keys (api_key);
-create index api_keys_user_email_idx on public.api_keys (user_email);
-
--- Usage tracking table
-create table public.api_usage (
-  id bigint generated always as identity primary key,
-  api_key_id bigint references public.api_keys(id),
-  contract_address text,
-  response_time_ms integer,
-  cached boolean default false,
-  created_at timestamptz default now()
-);
-
-create index api_usage_api_key_id_idx on public.api_usage (api_key_id);
-create index api_usage_created_at_idx on public.api_usage (created_at);
-
--- Rate limit tracking (for in-memory or Redis alternative)
--- This can be handled in application code or with Supabase Realtime
-```
-
-### 2. Environment Variables
-
-Add to your `.env.local`:
-
-```env
-# API Distribution
-API_KEY_SECRET=your-secret-for-generating-api-keys
-ENABLE_API_KEYS=true
-DEFAULT_RATE_LIMIT_PER_MINUTE=10
-DEFAULT_RATE_LIMIT_PER_DAY=100
-```
-
-### 3. API Key Generation
-
-Create a utility script to generate API keys:
+You can use the API without an API key for testing and low-volume usage:
 
 ```javascript
-// scripts/generate-api-key.js
-import { createClient } from '@supabase/supabase-js';
-import crypto from 'crypto';
-
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-async function generateApiKey(keyName, userEmail, tier = 'free') {
-  // Generate a secure API key
-  const apiKey = `dyor_${crypto.randomBytes(32).toString('hex')}`;
-  
-  // Determine rate limits based on tier
-  const rateLimits = {
-    free: { perMinute: 10, perDay: 100 },
-    starter: { perMinute: 30, perDay: 1000 },
-    pro: { perMinute: 100, perDay: 10000 },
-    enterprise: { perMinute: 500, perDay: 100000 }
-  };
-  
-  const { data, error } = await supabase
-    .from('api_keys')
-    .insert({
-      api_key: apiKey,
-      key_name: keyName,
-      user_email: userEmail,
-      tier: tier,
-      rate_limit_per_minute: rateLimits[tier].perMinute,
-      rate_limit_per_day: rateLimits[tier].perDay
-    })
-    .select()
-    .single();
-  
-  if (error) {
-    console.error('Error creating API key:', error);
-    return null;
-  }
-  
-  console.log('API Key created successfully:');
-  console.log('Key:', apiKey);
-  console.log('Tier:', tier);
-  console.log('Rate Limits:', rateLimits[tier]);
-  
-  return apiKey;
-}
-
-// Usage
-generateApiKey('My App', 'user@example.com', 'starter');
-```
-
-## API Authentication
-
-### Request Format
-
-All API requests must include an API key in the `Authorization` header:
-
-```
-Authorization: Bearer dyor_your_api_key_here
-```
-
-Or as a query parameter (less secure, not recommended):
-
-```
-GET /api/scan?apiKey=dyor_your_api_key_here
-```
-
-### Response Format
-
-Success response (200):
-```json
-{
-  "success": true,
-  "data": {
-    "cached": false,
-    "contractAddress": "...",
-    "tokenName": "...",
-    "verdict": "CONFIRMED",
-    ...
+const response = await fetch('https://your-domain.com/api/scan', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
   },
-  "usage": {
-    "requestsRemaining": 95,
-    "resetAt": "2024-01-01T00:00:00Z"
-  }
-}
+  body: JSON.stringify({
+    contractAddress: 'So11111111111111111111111111111111111111112'
+  })
+});
+
+const result = await response.json();
+console.log(result.verdict); // CONFIRMED, PARTIAL, or UNVERIFIED
 ```
 
-Error response (401):
+### With API Key (Recommended)
+
+For production use and higher rate limits, get an API key from us:
+
+```javascript
+const response = await fetch('https://your-domain.com/api/scan', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer dyor_your_api_key_here'
+  },
+  body: JSON.stringify({
+    contractAddress: 'So11111111111111111111111111111111111111112'
+  })
+});
+
+const result = await response.json();
+console.log(result.verdict);
+```
+
+## API Endpoint
+
+### POST /api/scan
+
+Analyze a Solana token contract address.
+
+**Headers:**
+- `Content-Type: application/json` (required)
+- `Authorization: Bearer {api_key}` (optional, recommended for production)
+
+**Request Body:**
 ```json
 {
-  "error": "Unauthorized",
-  "message": "Invalid or missing API key"
+  "contractAddress": "string (required)",
+  "forceRefresh": boolean (optional, default: false)
 }
 ```
 
-Error response (429):
+**Response:**
 ```json
 {
-  "error": "Rate limit exceeded",
-  "message": "You have exceeded your rate limit of 10 requests per minute",
-  "retryAfter": 60
+  "cached": false,
+  "contractAddress": "string",
+  "tokenName": "string",
+  "symbol": "string",
+  "narrativeClaim": "string",
+  "entities": {
+    "organizations": ["string"],
+    "products": ["string"],
+    "topics": ["string"]
+  },
+  "verdict": "CONFIRMED | PARTIAL | UNVERIFIED",
+  "confidence": "high | medium | low",
+  "tokenScore": 75,
+  "sentimentScore": 65,
+  "marketData": {
+    "price": "0.000123",
+    "liquidity": 500000,
+    "volume24h": 100000,
+    "priceChange24h": 5.2
+  },
+  "securityData": {
+    "risks": []
+  },
+  "socials": {
+    "website": "https://...",
+    "x": "https://...",
+    "telegram": "https://..."
+  },
+  "summary": "Bullet point summary...",
+  "fundamentalsAnalysis": "...",
+  "hypeAnalysis": "...",
+  "notesForUser": "..."
 }
 ```
 
-## Rate Limiting
-
-Rate limits are enforced per API key:
-
-- **Free Tier**: 10 requests/minute, 100 requests/day
-- **Starter Tier**: 30 requests/minute, 1,000 requests/day
-- **Pro Tier**: 100 requests/minute, 10,000 requests/day
-- **Enterprise Tier**: 500 requests/minute, 100,000 requests/day
-
-Rate limit headers are included in responses:
-
+**Rate Limit Headers (when using API key):**
 ```
-X-RateLimit-Limit: 10
-X-RateLimit-Remaining: 9
+X-RateLimit-Limit: 30
+X-RateLimit-Remaining: 29
 X-RateLimit-Reset: 1704067200
 ```
 
@@ -197,13 +115,18 @@ X-RateLimit-Reset: 1704067200
 ### JavaScript/Node.js
 
 ```javascript
-async function scanToken(contractAddress, apiKey) {
+async function scanToken(contractAddress, apiKey = null) {
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+  
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+  
   const response = await fetch('https://your-domain.com/api/scan', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
+    headers: headers,
     body: JSON.stringify({
       contractAddress: contractAddress
     })
@@ -211,19 +134,18 @@ async function scanToken(contractAddress, apiKey) {
   
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.message);
+    throw new Error(error.message || 'API request failed');
   }
   
-  const data = await response.json();
-  return data.data;
+  return await response.json();
 }
 
 // Usage
 const result = await scanToken(
   'So11111111111111111111111111111111111111112',
-  'dyor_your_api_key_here'
+  'dyor_your_api_key_here' // optional
 );
-console.log(result.verdict); // CONFIRMED, PARTIAL, or UNVERIFIED
+console.log(result.verdict);
 ```
 
 ### Python
@@ -231,12 +153,15 @@ console.log(result.verdict); // CONFIRMED, PARTIAL, or UNVERIFIED
 ```python
 import requests
 
-def scan_token(contract_address, api_key):
+def scan_token(contract_address, api_key=None):
     url = 'https://your-domain.com/api/scan'
     headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {api_key}'
+        'Content-Type': 'application/json'
     }
+    
+    if api_key:
+        headers['Authorization'] = f'Bearer {api_key}'
+    
     data = {
         'contractAddress': contract_address
     }
@@ -244,13 +169,12 @@ def scan_token(contract_address, api_key):
     response = requests.post(url, json=data, headers=headers)
     response.raise_for_status()
     
-    result = response.json()
-    return result['data']
+    return response.json()
 
 # Usage
 result = scan_token(
     'So11111111111111111111111111111111111111112',
-    'dyor_your_api_key_here'
+    'dyor_your_api_key_here'  # optional
 )
 print(result['verdict'])
 ```
@@ -258,6 +182,14 @@ print(result['verdict'])
 ### cURL
 
 ```bash
+# Without API key
+curl -X POST https://your-domain.com/api/scan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contractAddress": "So11111111111111111111111111111111111111112"
+  }'
+
+# With API key
 curl -X POST https://your-domain.com/api/scan \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer dyor_your_api_key_here" \
@@ -266,128 +198,104 @@ curl -X POST https://your-domain.com/api/scan \
   }'
 ```
 
-## Webhooks (Optional)
+## Rate Limits
 
-You can configure webhooks to receive scan results asynchronously:
+### Without API Key (Public Access)
+- 10 requests per minute
+- 100 requests per day per IP address
 
-```javascript
-// Request with webhook
-{
-  "contractAddress": "...",
-  "webhookUrl": "https://your-app.com/webhook",
-  "webhookSecret": "your-secret-for-verification"
-}
-```
+### With API Key
+Rate limits depend on your tier:
+- **Free**: 10 requests/minute, 100 requests/day
+- **Starter**: 30 requests/minute, 1,000 requests/day
+- **Pro**: 100 requests/minute, 10,000 requests/day
+- **Enterprise**: Custom limits
 
-The webhook will receive a POST request with the scan result.
+When rate limits are exceeded, you'll receive a `429 Too Many Requests` response:
 
-## API Documentation
-
-### Endpoint: POST /api/scan
-
-Analyze a Solana token contract address.
-
-**Headers:**
-- `Authorization: Bearer {api_key}` (required)
-- `Content-Type: application/json`
-
-**Request Body:**
 ```json
 {
-  "contractAddress": "string (required)",
-  "forceRefresh": boolean (optional, default: false),
-  "webhookUrl": "string (optional)",
-  "webhookSecret": "string (optional)"
+  "error": "Rate limit exceeded",
+  "message": "You have exceeded your rate limit of 10 requests per minute",
+  "retryAfter": 60
 }
 ```
 
-**Response:**
+## Error Handling
+
+### 400 Bad Request
 ```json
 {
-  "success": true,
-  "data": {
-    "cached": boolean,
-    "contractAddress": "string",
-    "tokenName": "string",
-    "symbol": "string",
-    "narrativeClaim": "string",
-    "verdict": "CONFIRMED | PARTIAL | UNVERIFIED",
-    "confidence": "high | medium | low",
-    "tokenScore": number,
-    "marketData": { ... },
-    "securityData": { ... },
-    ...
-  },
-  "usage": {
-    "requestsRemaining": number,
-    "resetAt": "ISO 8601 timestamp"
-  }
+  "error": "Invalid Solana address format",
+  "message": "Contract address must be a valid Solana address"
 }
 ```
 
-### Endpoint: GET /api/usage
-
-Get usage statistics for your API key.
-
-**Headers:**
-- `Authorization: Bearer {api_key}` (required)
-
-**Response:**
+### 401 Unauthorized
 ```json
 {
-  "tier": "free",
-  "usage": {
-    "today": 45,
-    "thisMonth": 1200,
-    "limit": {
-      "perMinute": 10,
-      "perDay": 100
-    }
-  },
-  "resetAt": "2024-01-01T00:00:00Z"
+  "error": "Unauthorized",
+  "message": "Invalid API key"
 }
 ```
 
-## Pricing Tiers
+### 429 Too Many Requests
+```json
+{
+  "error": "Rate limit exceeded",
+  "message": "You have exceeded your rate limit",
+  "retryAfter": 60
+}
+```
 
-### Free Tier
-- 10 requests/minute
-- 100 requests/day
-- Basic support
-- Public API access
+### 500 Internal Server Error
+```json
+{
+  "error": "Internal server error",
+  "message": "An error occurred while processing your request"
+}
+```
 
-### Starter Tier ($29/month)
-- 30 requests/minute
-- 1,000 requests/day
-- Email support
-- Usage analytics
+## Getting an API Key
 
-### Pro Tier ($99/month)
-- 100 requests/minute
-- 10,000 requests/day
-- Priority support
-- Custom rate limits
-- Webhook support
+To get an API key for production use:
 
-### Enterprise Tier (Custom)
-- 500+ requests/minute
-- 100,000+ requests/day
-- Dedicated support
-- SLA guarantee
-- Custom integrations
+1. Contact us at api@dyorscanner.com
+2. Provide:
+   - Your use case
+   - Expected request volume
+   - Your application name
+3. We'll provide you with an API key and appropriate rate limits
 
-## Security Best Practices
+## Understanding Verdicts
 
-1. **Never expose API keys in client-side code**
-2. **Use environment variables** to store API keys
-3. **Rotate API keys** regularly
-4. **Monitor usage** for suspicious activity
-5. **Use HTTPS** for all API requests
-6. **Implement IP whitelisting** for enterprise customers
+### CONFIRMED
+The narrative references real, verifiable events or products. **Note**: This does NOT mean the token is safe or officially affiliated.
+
+### PARTIAL
+The narrative mixes truth with hype. Real events may be referenced, but claims are exaggerated.
+
+### UNVERIFIED
+The narrative's claims cannot be verified. Exercise extreme caution.
+
+## Best Practices
+
+1. **Cache results**: Token analysis results are cached. Use `forceRefresh: true` only when needed.
+
+2. **Handle errors gracefully**: Implement retry logic with exponential backoff for rate limit errors.
+
+3. **Store API keys securely**: Never expose API keys in client-side code or public repositories.
+
+4. **Monitor rate limits**: Check the `X-RateLimit-Remaining` header to avoid hitting limits.
+
+5. **Use HTTPS**: Always use HTTPS for API requests.
 
 ## Support
 
-For API support, email: api@dyorscanner.com
+- **Email**: api@dyorscanner.com
+- **Documentation**: https://docs.dyorscanner.com
+- **Issues**: Open an issue on GitHub
 
-For documentation: https://docs.dyorscanner.com
+---
 
+**No setup required** - just make HTTP requests and get results. Simple as that.
