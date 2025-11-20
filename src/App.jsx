@@ -49,14 +49,15 @@ function AppContent() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Scan failed");
+        const errorMessage = err.message || err.error || `Scan failed (${res.status})`;
+        throw new Error(errorMessage);
       }
 
       const data = await res.json();
       setResult(data);
     } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message || "Something went wrong");
+      console.error("Scan error:", err);
+      setErrorMsg(err.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -93,23 +94,41 @@ function AppContent() {
             <div className="hero-badge">POWERED BY AI</div>
             <h1 className="hero-title">Verify Token Narratives<br/>Before You Invest</h1>
             <p className="hero-subtitle">AI-powered analysis that extracts claims, identifies entities, and verifies narratives from Solana token data. Make informed decisions with real-time market intelligence.</p>
-            <button onClick={scrollToScan} className="btn-hero">Start Scanning</button>
+            
+            <div className="hero-scanner">
+              <ScanForm onScan={handleScan} loading={loading} />
+              
+              {loading && (
+                <div className="loading-state">
+                  <div className="loading-spinner"></div>
+                  <p className="loading-message">{loadingMessage}</p>
+                </div>
+              )}
+
+              {errorMsg && <div className="error">{errorMsg}</div>}
+            </div>
           </div>
           <div className="hero-visual">
-            <div className="visual-grid">
-              <div className="grid-item">
-                <div className="stat-number">10K+</div>
-                <div className="stat-label">Tokens Analyzed</div>
+            {result ? (
+              <div className="hero-result">
+                <ScanResult result={result} />
               </div>
-              <div className="grid-item">
-                <div className="stat-number">98%</div>
-                <div className="stat-label">Accuracy Rate</div>
+            ) : (
+              <div className="visual-grid">
+                <div className="grid-item">
+                  <div className="stat-number">10K+</div>
+                  <div className="stat-label">Tokens Analyzed</div>
+                </div>
+                <div className="grid-item">
+                  <div className="stat-number">98%</div>
+                  <div className="stat-label">Accuracy Rate</div>
+                </div>
+                <div className="grid-item">
+                  <div className="stat-number">&lt;5s</div>
+                  <div className="stat-label">Scan Time</div>
+                </div>
               </div>
-              <div className="grid-item">
-                <div className="stat-number">&lt;5s</div>
-                <div className="stat-label">Scan Time</div>
-              </div>
-            </div>
+            )}
           </div>
         </section>
 
@@ -222,8 +241,6 @@ function AppContent() {
             )}
 
             {errorMsg && <div className="error">{errorMsg}</div>}
-
-            {result && <ScanResult result={result} />}
           </div>
         </section>
 

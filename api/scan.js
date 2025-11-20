@@ -1,18 +1,58 @@
 // api/scan.js
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
+import * as cheerio from "cheerio";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 const supabaseAdmin = createClient(
-  process.env.VITE_SUPABASE_URL,
+  process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Simple helper: fetch or create scan result for a CA
+// Helper: Validate Solana address format
+function validateSolanaAddress(address) {
+  if (!address || typeof address !== "string") return false;
+  // Solana addresses are base58 encoded and typically 32-44 characters
+  const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  return base58Regex.test(address.trim());
+}
+
+// Helper: Fetch with timeout
+async function fetchWithTimeout(url, options = {}, timeout = 10000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === "AbortError") {
+      throw new Error(`Request timeout: ${url}`);
+    }
+    throw error;
+  }
+}
+
+// Helper: Safe JSON parse with fallback
+function safeJsonParse(jsonString, fallback = null) {
+  try {
+    return JSON.parse(jsonString);
+  } catch {
+    return fallback;
+  }
+}
+
+// Helper: Cache operations
 async function getCachedScan(contractAddress) {
+  try {
   const { data, error } = await supabaseAdmin
     .from("dyor_scans")
     .select("*")
@@ -22,13 +62,18 @@ async function getCachedScan(contractAddress) {
     .maybeSingle();
 
   if (error) {
-    console.error("Supabase getCachedScan error:", error);
+      console.error("Cache read error:", error);
     return null;
   }
   return data;
+  } catch (error) {
+    console.error("Cache read exception:", error);
+    return null;
+  }
 }
 
 async function saveScan(contractAddress, result) {
+  try {
   const { data, error } = await supabaseAdmin
     .from("dyor_scans")
     .insert({
@@ -39,129 +84,454 @@ async function saveScan(contractAddress, result) {
     .single();
 
   if (error) {
-    console.error("Supabase saveScan error:", error);
-    throw error;
+      console.error("Cache save error:", error);
+      // Don't throw - cache save failure shouldn't break the scan
+      return null;
   }
   return data;
-}
-
-// Fetch token metadata from Chain Insight (if available) or Helius
-async function getChainInsightData(contractAddress) {
-  try {
-    // If you have Chain Insight API key, use it
-    // For now, we'll use a combination of DexScreener + potential future integration
-    return null; // Will be populated with real Chain Insight data
   } catch (error) {
-    console.error("Chain Insight fetch error:", error);
+    console.error("Cache save exception:", error);
     return null;
-  }
-}
-
-// Search web for narrative verification
-async function searchWebForNarrative(narrativeClaim, entities) {
-  try {
-    // Using Brave Search API or similar (you'll need to add API key)
-    // For now, return placeholder - will be replaced with real search
-    return {
-      articles: [],
-      searchPerformed: false,
-    };
-  } catch (error) {
-    console.error("Web search error:", error);
-    return { articles: [], searchPerformed: false };
-  }
-}
-
-// Search Twitter for lore tweet and validation
-async function searchTwitterForLore(narrativeClaim, entities) {
-  try {
-    // Using Twitter API v2 (requires API key)
-    // For now, return placeholder
-    return {
-      loreTweet: null,
-      validationTweets: [],
-    };
-  } catch (error) {
-    console.error("Twitter search error:", error);
-    return { loreTweet: null, validationTweets: [] };
   }
 }
 
 // Fetch token data from DexScreener
 async function getDexScreenerData(contractAddress) {
+  const startTime = Date.now();
+  console.log(`[DexScreener] Starting fetch for ${contractAddress}`);
+  
   try {
-    const response = await fetch(
-      `https://api.dexscreener.com/latest/dex/tokens/${contractAddress}`
-    );
+    const url = `https://api.dexscreener.com/latest/dex/tokens/${contractAddress}`;
+    console.log(`[DexScreener] Fetching: ${url}`);
+    
+    const response = await fetchWithTimeout(url, {}, 8000);
+
+    console.log(`[DexScreener] Response status: ${response.status}`);
     
     if (!response.ok) {
-      console.error(`DexScreener API returned status: ${response.status}`);
+      if (response.status === 404) {
+        console.log(`[DexScreener] Token not found (404)`);
       return null;
+      }
+      throw new Error(`DexScreener API error: ${response.status}`);
     }
     
     const data = await response.json();
+    console.log(`[DexScreener] Received data: ${data.pairs?.length || 0} pairs`);
     
     if (!data.pairs || data.pairs.length === 0) {
-      console.log("No trading pairs found on DexScreener for this token");
+      console.log(`[DexScreener] No trading pairs found`);
       return null;
     }
     
     // Get the pair with highest liquidity
-    const mainPair = data.pairs.sort((a, b) => 
-      (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
+    const mainPair = data.pairs.sort(
+      (a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
     )[0];
     
-    return {
+    const result = {
       tokenName: mainPair.baseToken.name || "Unknown Token",
       symbol: mainPair.baseToken.symbol || "???",
-      priceUsd: mainPair.priceUsd,
-      volume24h: mainPair.volume?.h24,
-      liquidity: mainPair.liquidity?.usd,
-      priceChange24h: mainPair.priceChange?.h24,
+      priceUsd: mainPair.priceUsd || null,
+      volume24h: mainPair.volume?.h24 || null,
+      liquidity: mainPair.liquidity?.usd || null,
+      priceChange24h: mainPair.priceChange?.h24 || null,
       socials: {
         website: mainPair.info?.websites?.[0]?.url || null,
-        x: mainPair.info?.socials?.find(s => s.type === "twitter")?.url || null,
-        telegram: mainPair.info?.socials?.find(s => s.type === "telegram")?.url || null,
+        x: mainPair.info?.socials?.find((s) => s.type === "twitter")?.url || null,
+        telegram: mainPair.info?.socials?.find((s) => s.type === "telegram")?.url || null,
       },
-      dexUrl: mainPair.url,
+      dexUrl: mainPair.url || null,
     };
+
+    const duration = Date.now() - startTime;
+    console.log(`[DexScreener] ✅ Success: ${result.symbol} (${result.tokenName}) - ${duration}ms`);
+    console.log(`[DexScreener] Socials: website=${!!result.socials.website}, twitter=${!!result.socials.x}, telegram=${!!result.socials.telegram}`);
+
+    return result;
   } catch (error) {
-    console.error("DexScreener fetch error:", error);
-    return null;
+    const duration = Date.now() - startTime;
+    console.error(`[DexScreener] ❌ Failed after ${duration}ms:`, error.message);
+    console.error(`[DexScreener] Error details:`, error);
+    throw new Error(`Failed to fetch market data: ${error.message}`);
   }
 }
 
 // Fetch token safety data from RugCheck
 async function getRugCheckData(contractAddress) {
+  const startTime = Date.now();
+  console.log(`[RugCheck] Starting fetch for ${contractAddress}`);
+  
   try {
-    const response = await fetch(
-      `https://api.rugcheck.xyz/v1/tokens/${contractAddress}/report`
-    );
+    const url = `https://api.rugcheck.xyz/v1/tokens/${contractAddress}/report`;
+    console.log(`[RugCheck] Fetching: ${url}`);
+    
+    const response = await fetchWithTimeout(url, {}, 8000);
+    console.log(`[RugCheck] Response status: ${response.status}`);
     
     if (!response.ok) {
-      // RugCheck might not have data for all tokens
+      if (response.status === 404 || response.status === 400) {
+        console.log(`[RugCheck] No data available (${response.status})`);
       return null;
+      }
+      throw new Error(`RugCheck API error: ${response.status}`);
     }
     
     const data = await response.json();
-    return {
+    const result = {
       riskLevel: data.riskLevel || "unknown",
       risks: data.risks || [],
       score: data.score || null,
     };
+    
+    const duration = Date.now() - startTime;
+    console.log(`[RugCheck] ✅ Success: ${result.risks.length} risks found - ${duration}ms`);
+    console.log(`[RugCheck] Risk level: ${result.riskLevel}, Score: ${result.score}`);
+    
+    return result;
   } catch (error) {
-    console.error("RugCheck fetch error:", error);
+    const duration = Date.now() - startTime;
+    console.error(`[RugCheck] ❌ Failed after ${duration}ms:`, error.message);
+    // Don't throw - security data is optional
+    return null;
+  }
+}
+
+// Fetch on-chain fundamentals from Helius
+async function getHeliusFundamentals(mint) {
+  const startTime = Date.now();
+  console.log(`[Helius] Starting fetch for ${mint}`);
+  
+  const url = `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_KEY}`;
+  const hasApiKey = !!process.env.HELIUS_KEY;
+  console.log(`[Helius] API key present: ${hasApiKey}`);
+
+  const body = {
+    jsonrpc: "2.0",
+    id: "helius-asset",
+    method: "getAsset",
+    params: { id: mint },
+  };
+
+  try {
+    console.log(`[Helius] Fetching from: ${url.substring(0, 50)}...`);
+    
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      8000
+    );
+
+    console.log(`[Helius] Response status: ${response.status}`);
+
+    if (!response.ok) {
+      console.log(`[Helius] Request failed: ${response.status}`);
+      return null;
+    }
+
+    const json = await response.json();
+    console.log(`[Helius] Response received:`, json.result ? "has result" : "no result");
+    
+    const asset = json?.result;
+
+    if (!asset) {
+      console.log(`[Helius] No asset data in response`);
+      return null;
+    }
+
+    const result = {
+      supply: asset.supply ?? null,
+      decimals: asset.decimals ?? null,
+      creators: asset.creators ?? [],
+      mintAuthority: asset.mintAuthority ?? null,
+      freezeAuthority: asset.freezeAuthority ?? null,
+      holderCount: asset.ownership?.ownerCount ?? null,
+      isMutable: asset.mutable ?? null,
+      createdAt: asset.createdAt ?? null,
+      tokenName: asset.content?.metadata?.name || null,
+      tokenSymbol: asset.content?.metadata?.symbol || null,
+      description: asset.content?.metadata?.description || null,
+    };
+    
+    const duration = Date.now() - startTime;
+    console.log(`[Helius] ✅ Success: ${result.tokenSymbol || "N/A"} - ${duration}ms`);
+    console.log(`[Helius] Supply: ${result.supply}, Holders: ${result.holderCount}, Mint Authority: ${result.mintAuthority || "none"}`);
+    
+    return result;
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[Helius] ❌ Failed after ${duration}ms:`, err.message);
+    console.error(`[Helius] Error details:`, err);
+    return null;
+  }
+}
+
+// Fetch market data from Birdeye
+async function getBirdeyeData(mint) {
+  const startTime = Date.now();
+  console.log(`[Birdeye] Starting fetch for ${mint}`);
+  
+  const url = `https://public-api.birdeye.so/defi/token_overview?address=${mint}`;
+  const hasApiKey = !!process.env.BIRDEYE_KEY;
+  console.log(`[Birdeye] API key present: ${hasApiKey}`);
+
+  try {
+    console.log(`[Birdeye] Fetching: ${url}`);
+    
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: "GET",
+        headers: {
+          "X-API-KEY": process.env.BIRDEYE_KEY,
+          accept: "application/json",
+        },
+      },
+      8000
+    );
+
+    console.log(`[Birdeye] Response status: ${response.status}`);
+
+    if (!response.ok) {
+      console.log(`[Birdeye] Request failed: ${response.status}`);
+      return null;
+    }
+
+    const json = await response.json();
+    console.log(`[Birdeye] Response received:`, json.data ? "has data" : "no data");
+
+    if (!json.data) {
+      console.log(`[Birdeye] No data in response`);
+      return null;
+    }
+
+    const result = {
+      price: json.data.price ?? null,
+      priceChange24h: json.data.priceChange24h ?? null,
+      volume24h: json.data.volume24h ?? null,
+      liquidity: json.data.liquidity ?? null,
+      tradeCount24h: json.data.tradeCount24h ?? null,
+      trendingRank: json.data.tokenRanking ?? null,
+    };
+    
+    const duration = Date.now() - startTime;
+    console.log(`[Birdeye] ✅ Success: Price=$${result.price || "N/A"}, Volume=$${result.volume24h || "N/A"} - ${duration}ms`);
+    console.log(`[Birdeye] Trending rank: ${result.trendingRank || "N/A"}`);
+    
+    return result;
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[Birdeye] ❌ Failed after ${duration}ms:`, err.message);
+    console.error(`[Birdeye] Error details:`, err);
+    return null;
+  }
+}
+
+// Compute market sentiment score (0-100)
+function computeMarketSentiment(birdeye) {
+  if (!birdeye) return null;
+
+  const price = birdeye.priceChange24h ?? 0;
+  const volume = birdeye.volume24h ?? 0;
+  const trades = birdeye.tradeCount24h ?? 0;
+  const rank = birdeye.trendingRank ?? 999;
+
+  // Normalize
+  const priceScore = Math.max(0, Math.min(1, (price + 50) / 100));
+  const tradeScore = Math.max(0, Math.min(1, Math.log10(trades + 1) / 4));
+  const volumeScore = Math.max(0, Math.min(1, Math.log10(volume + 1) / 6));
+  const trendingScore = Math.max(0, Math.min(1, (500 - rank) / 500));
+
+  const sentiment =
+    0.3 * priceScore +
+    0.3 * tradeScore +
+    0.25 * volumeScore +
+    0.15 * trendingScore;
+
+  return Math.round(sentiment * 100); // 0–100 score
+}
+
+// Fetch Twitter via Nitter (free Twitter scraper)
+async function getTwitterFromNitter(twitterUrl) {
+  const startTime = Date.now();
+  console.log(`[Twitter] Starting Nitter scrape for: ${twitterUrl}`);
+  
+  if (!twitterUrl) {
+    console.log(`[Twitter] No Twitter URL provided`);
+    return null;
+  }
+
+  // Convert https://twitter.com/... → https://nitter.net/...
+  const nitterUrl = twitterUrl
+    .replace("https://twitter.com", "https://nitter.net")
+    .replace("http://twitter.com", "https://nitter.net")
+    .replace("https://x.com", "https://nitter.net")
+    .replace("http://x.com", "https://nitter.net");
+
+  console.log(`[Twitter] Converted to Nitter URL: ${nitterUrl}`);
+
+  try {
+    const response = await fetchWithTimeout(nitterUrl, {}, 8000);
+    console.log(`[Twitter] Response status: ${response.status}`);
+    
+    if (!response.ok) {
+      console.log(`[Twitter] Request failed: ${response.status}`);
+      return null;
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    const tweets = [];
+
+    $(".timeline-item").each((i, el) => {
+      if (i >= 5) return; // Only first 5 tweets
+
+      const text = $(el).find(".tweet-content").text().trim();
+      const date = $(el).find("time").attr("datetime");
+      const likes = $(el).find(".likes .icon-container").text().trim();
+      const retweets = $(el).find(".retweets .icon-container").text().trim();
+
+      tweets.push({
+        text,
+        date,
+        likes,
+        retweets,
+      });
+    });
+
+    const result = {
+      tweets,
+      topTweet: tweets[0] || null,
+      tweetCount: tweets.length,
+    };
+    
+    const duration = Date.now() - startTime;
+    console.log(`[Twitter] ✅ Success: ${tweets.length} tweets scraped - ${duration}ms`);
+    
+    return result;
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[Twitter] ❌ Failed after ${duration}ms:`, err.message);
+    console.error(`[Twitter] Error details:`, err);
+    return null;
+  }
+}
+
+// Fetch Telegram via public t.me/s/{channel}
+async function getTelegramFeed(telegramUrl) {
+  const startTime = Date.now();
+  console.log(`[Telegram] Starting scrape for: ${telegramUrl}`);
+  
+  if (!telegramUrl) {
+    console.log(`[Telegram] No Telegram URL provided`);
+    return null;
+  }
+
+  const publicUrl = telegramUrl
+    .replace("https://t.me/", "https://t.me/s/")
+    .replace("http://t.me/", "https://t.me/s/");
+
+  console.log(`[Telegram] Converted to public URL: ${publicUrl}`);
+
+  try {
+    const response = await fetchWithTimeout(publicUrl, {}, 8000);
+    console.log(`[Telegram] Response status: ${response.status}`);
+    
+    if (!response.ok) {
+      console.log(`[Telegram] Request failed: ${response.status}`);
+      return null;
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    const messages = [];
+
+    $(".tgme_widget_message").each((i, el) => {
+      if (i >= 10) return; // limit
+
+      const text = $(el).find(".tgme_widget_message_text").text().trim();
+      const date = $(el).find("time").attr("datetime");
+
+      messages.push({ text, date });
+    });
+
+    const result = {
+      messages,
+      recentMessageCount: messages.length,
+      lastMessage: messages[0] || null,
+    };
+    
+    const duration = Date.now() - startTime;
+    console.log(`[Telegram] ✅ Success: ${messages.length} messages scraped - ${duration}ms`);
+    
+    return result;
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[Telegram] ❌ Failed after ${duration}ms:`, err.message);
+    console.error(`[Telegram] Error details:`, err);
+    return null;
+  }
+}
+
+// Scrape website HTML using CORSProxy (free)
+async function scrapeWebsite(websiteUrl) {
+  const startTime = Date.now();
+  console.log(`[Website] Starting scrape for: ${websiteUrl}`);
+  
+  if (!websiteUrl) {
+    console.log(`[Website] No website URL provided`);
+    return null;
+  }
+
+  const proxied = `https://corsproxy.io/?${encodeURIComponent(websiteUrl)}`;
+  console.log(`[Website] Proxied URL: ${proxied.substring(0, 60)}...`);
+
+  try {
+    const response = await fetchWithTimeout(proxied, {}, 8000);
+    console.log(`[Website] Response status: ${response.status}`);
+    
+    if (!response.ok) {
+      console.log(`[Website] Request failed: ${response.status}`);
+      return null;
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    const title = $("title").text();
+    const metaDesc = $('meta[name="description"]').attr("content");
+    const text = $("body").text().replace(/\s+/g, " ").trim();
+
+    const result = {
+      title,
+      metaDesc,
+      shortText: text.slice(0, 1500), // avoid huge payloads
+    };
+    
+    const duration = Date.now() - startTime;
+    console.log(`[Website] ✅ Success: Title="${title.substring(0, 50)}...", ${text.length} chars - ${duration}ms`);
+    
+    return result;
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[Website] ❌ Failed after ${duration}ms:`, err.message);
+    console.error(`[Website] Error details:`, err);
     return null;
   }
 }
 
 // Generate project summary from available data
-async function generateProjectSummary(tokenData, rugCheckData, contractAddress) {
+function generateProjectSummary(tokenData, rugCheckData, contractAddress) {
   if (!tokenData) {
-    // Fallback when no DEX data is available
     let summary = `Token with contract address ${contractAddress} is a Solana-based token`;
     
-    if (rugCheckData && rugCheckData.risks && rugCheckData.risks.length > 0) {
+    if (rugCheckData?.risks?.length > 0) {
       summary += ` with ${rugCheckData.risks.length} security risk(s) identified`;
     }
     
@@ -185,7 +555,7 @@ async function generateProjectSummary(tokenData, rugCheckData, contractAddress) 
   }
   
   if (priceUsd) {
-    summary += ` trading at $${priceUsd}`;
+    summary += ` trading at $${parseFloat(priceUsd).toFixed(6)}`;
   }
   
   summary += `.`;
@@ -199,52 +569,169 @@ async function generateProjectSummary(tokenData, rugCheckData, contractAddress) 
     summary += ` ${socialList.join(", ")}.`;
   }
   
-  if (rugCheckData && rugCheckData.risks && rugCheckData.risks.length > 0) {
+  if (rugCheckData?.risks?.length > 0) {
     summary += ` Security analysis identified ${rugCheckData.risks.length} potential risk factor(s).`;
   }
   
   return summary;
 }
 
+// Fetch all token data
 async function getTokenData(contractAddress) {
+  const overallStart = Date.now();
+  console.log(`\n[TokenData] ===== Starting token data fetch for ${contractAddress} =====`);
+  
   try {
     // Fetch data from multiple sources in parallel
-    const [dexData, rugData] = await Promise.all([
+    console.log(`[TokenData] Fetching from 4 sources: DexScreener, RugCheck, Helius, Birdeye`);
+    const fetchStart = Date.now();
+    
+    const [dexData, rugData, heliusData, birdeyeData] =
+      await Promise.allSettled([
       getDexScreenerData(contractAddress),
       getRugCheckData(contractAddress),
-    ]);
+        getHeliusFundamentals(contractAddress),
+        getBirdeyeData(contractAddress),
+      ]);
+
+    const fetchDuration = Date.now() - fetchStart;
+    console.log(`[TokenData] Initial fetch completed in ${fetchDuration}ms`);
+
+    const dex = dexData.status === "fulfilled" ? dexData.value : null;
+    const rug = rugData.status === "fulfilled" ? rugData.value : null;
+    const helius = heliusData.status === "fulfilled" ? heliusData.value : null;
+    const birdeye = birdeyeData.status === "fulfilled" ? birdeyeData.value : null;
+
+    console.log(`[TokenData] Results: DexScreener=${!!dex}, RugCheck=${!!rug}, Helius=${!!helius}, Birdeye=${!!birdeye}`);
     
-    // Generate summary from collected data
-    const projectSummary = await generateProjectSummary(dexData, rugData, contractAddress);
+    if (dexData.status === "rejected") {
+      console.error(`[TokenData] DexScreener failed:`, dexData.reason);
+    }
+    if (rugData.status === "rejected") {
+      console.error(`[TokenData] RugCheck failed:`, rugData.reason);
+    }
+    if (heliusData.status === "rejected") {
+      console.error(`[TokenData] Helius failed:`, heliusData.reason);
+    }
+    if (birdeyeData.status === "rejected") {
+      console.error(`[TokenData] Birdeye failed:`, birdeyeData.reason);
+    }
+
+    const sentimentScore = computeMarketSentiment(birdeye);
+    console.log(`[TokenData] Sentiment score: ${sentimentScore || "N/A"}`);
+    
+    const socials = dex?.socials || null;
+    console.log(`[TokenData] Social links: website=${!!socials?.website}, twitter=${!!socials?.x}, telegram=${!!socials?.telegram}`);
+
+    // Fetch social data in parallel
+    console.log(`[TokenData] Fetching social data...`);
+    const socialStart = Date.now();
+    
+    const [twitterDataResult, telegramDataResult, websiteDataResult] =
+      await Promise.allSettled([
+        socials?.x ? getTwitterFromNitter(socials.x) : Promise.resolve(null),
+        socials?.telegram
+          ? getTelegramFeed(socials.telegram)
+          : Promise.resolve(null),
+        socials?.website ? scrapeWebsite(socials.website) : Promise.resolve(null),
+      ]);
+    
+    const socialDuration = Date.now() - socialStart;
+    console.log(`[TokenData] Social fetch completed in ${socialDuration}ms`);
+
+    const twitterData =
+      twitterDataResult.status === "fulfilled"
+        ? twitterDataResult.value
+        : null;
+    const telegramData =
+      telegramDataResult.status === "fulfilled"
+        ? telegramDataResult.value
+        : null;
+    const websiteData =
+      websiteDataResult.status === "fulfilled"
+        ? websiteDataResult.value
+        : null;
+
+    console.log(`[TokenData] Social results: Twitter=${!!twitterData}, Telegram=${!!telegramData}, Website=${!!websiteData}`);
+    
+    if (twitterDataResult.status === "rejected") {
+      console.error(`[TokenData] Twitter scrape failed:`, twitterDataResult.reason);
+    }
+    if (telegramDataResult.status === "rejected") {
+      console.error(`[TokenData] Telegram scrape failed:`, telegramDataResult.reason);
+    }
+    if (websiteDataResult.status === "rejected") {
+      console.error(`[TokenData] Website scrape failed:`, websiteDataResult.reason);
+    }
+
+    // Generate comprehensive project summary
+    const projectSummary = `
+Token ${dex?.symbol || helius?.tokenSymbol || "???"} is a Solana token.
+
+Supply: ${helius?.supply || "unknown"}
+Holders: ${helius?.holderCount || "unknown"}
+Mint Authority: ${helius?.mintAuthority || "unknown"}
+Freeze Authority: ${helius?.freezeAuthority || "unknown"}
+
+Price: $${birdeye?.price || dex?.priceUsd || "unknown"}
+24h Volume: ${birdeye?.volume24h || dex?.volume24h || "unknown"}
+Liquidity: ${birdeye?.liquidity || dex?.liquidity || "unknown"}
+
+Security Risks: ${rug?.risks?.length || 0}
+Sentiment Score: ${sentimentScore || "N/A"}
+`.trim();
     
     return {
       projectSummary,
-      tokenName: dexData?.tokenName || "Unknown Token",
-      symbol: dexData?.symbol || "???",
-      socials: dexData?.socials || null,
-      marketData: dexData ? {
-        price: dexData.priceUsd,
-        volume24h: dexData.volume24h,
-        liquidity: dexData.liquidity,
-        priceChange24h: dexData.priceChange24h,
-        dexUrl: dexData.dexUrl,
-      } : null,
-      securityData: rugData,
-      hasMarketData: !!dexData,
+      tokenName: dex?.tokenName || helius?.tokenName || "Unknown Token",
+      symbol: dex?.symbol || helius?.tokenSymbol || "???",
+      socials,
+      marketData: {
+        price: birdeye?.price || dex?.priceUsd || null,
+        volume24h: birdeye?.volume24h || dex?.volume24h || null,
+        liquidity: birdeye?.liquidity || dex?.liquidity || null,
+        priceChange24h: birdeye?.priceChange24h || dex?.priceChange24h || null,
+        dexUrl: dex?.dexUrl || null,
+      },
+      fundamentals: helius,
+      birdeye,
+      sentimentScore,
+      securityData: rug,
+      hasMarketData: !!(dex || birdeye),
+      twitterData,
+      telegramData,
+      websiteData,
     };
   } catch (error) {
-    console.error("getTokenData error:", error);
+    const overallDuration = Date.now() - overallStart;
+    console.error(`[TokenData] ❌ Failed after ${overallDuration}ms:`, error.message);
+    console.error(`[TokenData] Error stack:`, error.stack);
     throw new Error(`Failed to fetch token data: ${error.message}`);
   }
 }
 
-async function extractNarrativeClaim(projectSummary, tokenDescription) {
+// Extract narrative claim using AI
+async function extractNarrativeClaim(projectSummary, socialContext) {
+  const startTime = Date.now();
+  console.log(`\n[Narrative] ===== Starting narrative extraction =====`);
+  console.log(`[Narrative] Project summary length: ${projectSummary?.length || 0} chars`);
+  console.log(`[Narrative] Social context provided: ${!!socialContext}`);
+  
+  try {
+    const socialDataText = socialContext
+      ? `
+SOCIAL CONTEXT:
+${socialContext}
+`
+      : "";
+
   const fullContext = `
 PROJECT SUMMARY:
 ${projectSummary}
-
-${tokenDescription ? `TOKEN DESCRIPTION:\n${tokenDescription}` : ''}
+${socialDataText}
 `.trim();
+    
+    console.log(`[Narrative] Full context length: ${fullContext.length} chars`);
 
   const prompt = `
 You are an expert crypto narrative analyst.
@@ -269,6 +756,9 @@ Return STRICT JSON only.
 CONTEXT:
 ${fullContext}
 `;
+
+    console.log(`[Narrative] Calling OpenAI API (gpt-4o-mini)...`);
+    const aiStart = Date.now();
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -309,21 +799,92 @@ ${fullContext}
         },
       },
     },
-  });
+      temperature: 0.7,
+      max_tokens: 1000,
+    });
 
-  const parsed = JSON.parse(completion.choices[0].message.content);
+    const aiDuration = Date.now() - aiStart;
+    console.log(`[Narrative] OpenAI response received in ${aiDuration}ms`);
+
+    const content = completion.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error("No response from AI model");
+    }
+
+    console.log(`[Narrative] Response content length: ${content.length} chars`);
+
+    const parsed = safeJsonParse(content);
+    if (!parsed || !parsed.narrative_claim) {
+      console.error(`[Narrative] Invalid response format:`, content.substring(0, 200));
+      throw new Error("Invalid AI response format");
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(`[Narrative] ✅ Success: "${parsed.narrative_claim.substring(0, 100)}..." - ${duration}ms`);
+    console.log(`[Narrative] Entities: ${parsed.entities?.organizations?.length || 0} orgs, ${parsed.entities?.products?.length || 0} products, ${parsed.entities?.topics?.length || 0} topics\n`);
+
   return parsed;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[Narrative] ❌ Failed after ${duration}ms:`, error.message);
+    console.error(`[Narrative] Error details:`, error);
+    throw new Error(`Failed to extract narrative: ${error.message}`);
+  }
 }
 
-// Enhanced narrative classification with evidence
-async function classifyNarrative({ narrativeClaim, projectSummary, entities, webEvidence, twitterEvidence }) {
-  const evidenceSummary = webEvidence && webEvidence.searchPerformed 
-    ? `\nWEB EVIDENCE: ${webEvidence.articles.length} articles found`
-    : '\nWEB EVIDENCE: No external search performed yet';
+// Search web for narrative verification (placeholder)
+async function searchWebForNarrative(narrativeClaim, entities) {
+  try {
+    // Placeholder for web search API integration
+    return {
+      articles: [],
+      searchPerformed: false,
+    };
+  } catch (error) {
+    console.error("Web search error:", error);
+    return { articles: [], searchPerformed: false };
+  }
+}
 
-  const twitterSummary = twitterEvidence && twitterEvidence.loreTweet
+// Search Twitter for lore tweet (placeholder)
+async function searchTwitterForLore(narrativeClaim, entities) {
+  try {
+    // Placeholder for Twitter API integration
+    return {
+      loreTweet: null,
+      validationTweets: [],
+    };
+  } catch (error) {
+    console.error("Twitter search error:", error);
+    return { loreTweet: null, validationTweets: [] };
+  }
+}
+
+// Classify narrative with AI
+async function classifyNarrative({
+  narrativeClaim,
+  projectSummary,
+  entities,
+  webEvidence,
+  twitterEvidence,
+}) {
+  const startTime = Date.now();
+  console.log(`\n[Classification] ===== Starting narrative classification =====`);
+  console.log(`[Classification] Narrative claim: "${narrativeClaim.substring(0, 100)}..."`);
+  
+  try {
+    const evidenceSummary =
+      webEvidence && webEvidence.searchPerformed
+    ? `\nWEB EVIDENCE: ${webEvidence.articles.length} articles found`
+        : "\nWEB EVIDENCE: No external search performed yet";
+
+    const twitterSummary =
+      twitterEvidence && twitterEvidence.loreTweet
     ? `\nLORE TWEET: Found origin tweet`
-    : '\nLORE TWEET: Not identified';
+        : "\nLORE TWEET: Not identified";
+    
+    console.log(`[Classification] Web evidence: ${webEvidence?.articles?.length || 0} articles`);
+    console.log(`[Classification] Twitter evidence: ${twitterEvidence?.loreTweet ? "found" : "none"}`);
 
   const prompt = `
 You are an expert crypto narrative fact-checker and analyst.
@@ -368,6 +929,9 @@ Return STRICT JSON:
 }
 `;
 
+    console.log(`[Classification] Calling OpenAI API (gpt-4o-mini)...`);
+    const aiStart = Date.now();
+
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
@@ -401,21 +965,62 @@ Return STRICT JSON:
         },
       },
     },
-  });
+      temperature: 0.7,
+      max_tokens: 800,
+    });
 
-  const parsed = JSON.parse(completion.choices[0].message.content);
-  return {
+    const aiDuration = Date.now() - aiStart;
+    console.log(`[Classification] OpenAI response received in ${aiDuration}ms`);
+
+    const content = completion.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error("No response from AI model");
+    }
+
+    const parsed = safeJsonParse(content);
+    if (!parsed || !parsed.verdict) {
+      console.error(`[Classification] Invalid response format:`, content.substring(0, 200));
+      throw new Error("Invalid AI response format");
+    }
+
+    const result = {
     verdict: parsed.verdict,
-    reasoning: parsed.reasoning,
+      reasoning: parsed.reasoning || "Analysis completed",
     confidence: parsed.confidence || "medium",
     redFlags: parsed.redFlags || [],
   };
+    
+    const duration = Date.now() - startTime;
+    console.log(`[Classification] ✅ Success: ${result.verdict} (${result.confidence} confidence) - ${duration}ms`);
+    console.log(`[Classification] Red flags: ${result.redFlags.length}\n`);
+
+    return result;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[Classification] ❌ Failed after ${duration}ms:`, error.message);
+    console.error(`[Classification] Error details:`, error);
+    throw new Error(`Failed to classify narrative: ${error.message}`);
+  }
 }
 
-async function generateUserNotes({ narrativeClaim, verdict, reasoning, confidence, redFlags, entities }) {
-  const redFlagsText = redFlags && redFlags.length > 0 
+// Generate user notes
+async function generateUserNotes({
+  narrativeClaim,
+  verdict,
+  reasoning,
+  confidence,
+  redFlags,
+  entities,
+}) {
+  const startTime = Date.now();
+  console.log(`\n[UserNotes] ===== Starting user notes generation =====`);
+  console.log(`[UserNotes] Verdict: ${verdict}, Confidence: ${confidence}`);
+  
+  try {
+    const redFlagsText =
+      redFlags && redFlags.length > 0
     ? `\nRED FLAGS: ${redFlags.join(", ")}`
-    : '';
+        : "";
 
   const prompt = `
 You are writing analysis notes for crypto investors doing their own research (DYOR).
@@ -426,7 +1031,7 @@ Write a comprehensive but clear analysis (150-200 words) that covers:
 2. **Reality Check**: Our verdict (${verdict}) and why
 3. **Key Entities**: Who/what is being referenced (${entities.organizations?.join(", ") || "none"})
 4. **What This Means**: Practical implications for investors
-5. **Red Flags**: Any concerns or warnings${redFlags && redFlags.length > 0 ? ` (${redFlags.join(", ")})` : ''}
+5. **Red Flags**: Any concerns or warnings${redFlags && redFlags.length > 0 ? ` (${redFlags.join(", ")})` : ""}
 
 Be direct, informative, and honest. Use a professional but accessible tone.
 
@@ -434,6 +1039,9 @@ NARRATIVE: ${narrativeClaim}
 VERDICT: ${verdict} (${confidence} confidence)
 ANALYSIS: ${reasoning}${redFlagsText}
 `;
+
+    console.log(`[UserNotes] Calling OpenAI API (gpt-4o-mini)...`);
+    const aiStart = Date.now();
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -443,64 +1051,170 @@ ANALYSIS: ${reasoning}${redFlagsText}
         content: prompt,
       },
     ],
-  });
+      temperature: 0.7,
+      max_tokens: 500,
+    });
 
-  const text = completion.choices[0].message.content.trim();
+    const aiDuration = Date.now() - aiStart;
+    console.log(`[UserNotes] OpenAI response received in ${aiDuration}ms`);
+
+    const text = completion.choices[0]?.message?.content?.trim();
+    if (!text) {
+      throw new Error("No response from AI model");
+    }
+    
+    const duration = Date.now() - startTime;
+    console.log(`[UserNotes] ✅ Success: ${text.length} chars generated - ${duration}ms\n`);
+    
   return text;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[UserNotes] ❌ Failed after ${duration}ms:`, error.message);
+    console.error(`[UserNotes] Error details:`, error);
+    throw new Error(`Failed to generate user notes: ${error.message}`);
+  }
 }
 
-// Vercel serverless function entrypoint
+// Main handler
 export default async function handler(req, res) {
+  const requestStart = Date.now();
+  console.log(`\n\n========================================`);
+  console.log(`[Handler] ===== NEW SCAN REQUEST =====`);
+  console.log(`[Handler] Method: ${req.method}`);
+  console.log(`[Handler] Timestamp: ${new Date().toISOString()}`);
+  console.log(`========================================\n`);
+
+  // CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    console.log(`[Handler] OPTIONS request - returning 200`);
+    return res.status(200).end();
+  }
+
   if (req.method !== "POST") {
+    console.log(`[Handler] Invalid method: ${req.method}`);
     res.setHeader("Allow", "POST");
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({
+      error: "Method not allowed",
+      message: "Only POST requests are supported",
+    });
   }
 
   try {
-    const { contractAddress, forceRefresh = false } = req.body || {};
+    const { contractAddress } = req.body || {};
+    console.log(`[Handler] Request body:`, { contractAddress: contractAddress?.substring(0, 20) + "..." });
 
-    if (!contractAddress || typeof contractAddress !== "string") {
-      return res
-        .status(400)
-        .json({ error: "contractAddress (string) is required" });
+    // Validation
+    if (!contractAddress) {
+      console.log(`[Handler] ❌ Validation failed: Missing contract address`);
+      return res.status(400).json({
+        error: "Missing contract address",
+        message: "contractAddress is required",
+      });
     }
 
-    // 1) Check cache (only use if it has the new data structure)
-    if (!forceRefresh) {
-      const cached = await getCachedScan(contractAddress);
-      if (cached?.result_json && cached.result_json.marketData && cached.result_json.socials) {
+    if (typeof contractAddress !== "string") {
+      console.log(`[Handler] ❌ Validation failed: Invalid type`);
+      return res.status(400).json({
+        error: "Invalid contract address type",
+        message: "contractAddress must be a string",
+      });
+    }
+
+    const trimmedAddress = contractAddress.trim();
+    console.log(`[Handler] Trimmed address: ${trimmedAddress.substring(0, 20)}...`);
+    
+    if (!validateSolanaAddress(trimmedAddress)) {
+      console.log(`[Handler] ❌ Validation failed: Invalid Solana address format`);
+      return res.status(400).json({
+        error: "Invalid Solana address format",
+        message:
+          "Contract address must be a valid Solana address (32-44 base58 characters)",
+      });
+    }
+
+    console.log(`[Handler] ✅ Validation passed`);
+
+    // Check cache
+    console.log(`[Handler] Checking cache...`);
+    const cacheStart = Date.now();
+    const cached = await getCachedScan(trimmedAddress);
+    const cacheDuration = Date.now() - cacheStart;
+    
+    if (
+      cached?.result_json &&
+      cached.result_json.marketData &&
+      cached.result_json.socials
+    ) {
+      const totalDuration = Date.now() - requestStart;
+      console.log(`[Handler] ✅ Cache hit! Returning cached result (${totalDuration}ms total)\n`);
         return res.status(200).json({
           cached: true,
           ...cached.result_json,
         });
-      }
     }
+    
+    console.log(`[Handler] Cache miss (${cacheDuration}ms) - proceeding with fresh scan`);
 
-    // 2) Fetch real token data from DexScreener + RugCheck
-    const tokenData = await getTokenData(contractAddress);
+    // Fetch token data
+    console.log(`[Handler] Starting fresh scan...`);
+    const scanStart = Date.now();
+    const tokenData = await getTokenData(trimmedAddress);
+    const scanDuration = Date.now() - scanStart;
+    console.log(`[Handler] Token data fetched in ${scanDuration}ms`);
 
-    // 3) Narrative extraction
+    // Prepare social context for narrative extraction
+    const socialContext = JSON.stringify({
+      website: tokenData.websiteData,
+      twitter: tokenData.twitterData,
+      telegram: tokenData.telegramData,
+    });
+    console.log(`[Handler] Prepared social context for narrative extraction`);
+
+    // Extract narrative
+    const narrativeStart = Date.now();
     const { narrative_claim, entities } = await extractNarrativeClaim(
       tokenData.projectSummary,
-      tokenData.tokenDescription
+      socialContext
     );
+    const narrativeDuration = Date.now() - narrativeStart;
+    console.log(`[Handler] Narrative extracted in ${narrativeDuration}ms`);
 
-    // 4) Search for evidence (web + Twitter)
-    const [webEvidence, twitterEvidence] = await Promise.all([
+    // Search for evidence (parallel)
+    console.log(`[Handler] Searching for evidence...`);
+    const evidenceStart = Date.now();
+    const [webEvidence, twitterEvidence] = await Promise.allSettled([
       searchWebForNarrative(narrative_claim, entities),
       searchTwitterForLore(narrative_claim, entities),
     ]);
+    const evidenceDuration = Date.now() - evidenceStart;
+    console.log(`[Handler] Evidence search completed in ${evidenceDuration}ms`);
 
-    // 5) Enhanced classification with evidence
-    const { verdict, reasoning, confidence, redFlags } = await classifyNarrative({
+    const webResult =
+      webEvidence.status === "fulfilled" ? webEvidence.value : { articles: [], searchPerformed: false };
+    const twitterResult =
+      twitterEvidence.status === "fulfilled"
+        ? twitterEvidence.value
+        : { loreTweet: null, validationTweets: [] };
+
+    // Classify narrative
+    const classifyStart = Date.now();
+    const { verdict, reasoning, confidence, redFlags } =
+      await classifyNarrative({
       narrativeClaim: narrative_claim,
       projectSummary: tokenData.projectSummary,
       entities,
-      webEvidence,
-      twitterEvidence,
+        webEvidence: webResult,
+        twitterEvidence: twitterResult,
     });
+    const classifyDuration = Date.now() - classifyStart;
+    console.log(`[Handler] Classification completed in ${classifyDuration}ms`);
 
-    // 6) Generate comprehensive user notes
+    // Generate user notes
+    const notesStart = Date.now();
     const notesForUser = await generateUserNotes({
       narrativeClaim: narrative_claim,
       verdict,
@@ -509,10 +1223,12 @@ export default async function handler(req, res) {
       redFlags,
       entities,
     });
+    const notesDuration = Date.now() - notesStart;
+    console.log(`[Handler] User notes generated in ${notesDuration}ms`);
 
-    // 7) Assemble comprehensive result
+    // Assemble result
     const result = {
-      contractAddress,
+      contractAddress: trimmedAddress,
       projectSummary: tokenData.projectSummary,
       tokenName: tokenData.tokenName,
       symbol: tokenData.symbol,
@@ -521,25 +1237,72 @@ export default async function handler(req, res) {
       marketData: tokenData.marketData,
       socials: tokenData.socials,
       securityData: tokenData.securityData,
-      loreTweet: twitterEvidence?.loreTweet || null,
+      fundamentals: tokenData.fundamentals,
+      birdeye: tokenData.birdeye,
+      sentimentScore: tokenData.sentimentScore,
+      twitterData: tokenData.twitterData,
+      telegramData: tokenData.telegramData,
+      websiteData: tokenData.websiteData,
+      loreTweet: twitterResult?.loreTweet || null,
       verdict,
       verdictReasoning: reasoning,
       confidence,
       redFlags: redFlags || [],
       evidence: {
-        articles: webEvidence?.articles || [],
-        tweets: twitterEvidence?.validationTweets || [],
+        articles: webResult?.articles || [],
+        tweets: twitterResult?.validationTweets || [],
       },
       notesForUser,
     };
 
-    // 8) Save to Supabase
-    await saveScan(contractAddress, result);
+    // Save to cache (don't wait for it)
+    console.log(`[Handler] Saving to cache (background)...`);
+    saveScan(trimmedAddress, result).catch((err) =>
+      console.error("[Handler] Background cache save failed:", err)
+    );
 
-    return res.status(200).json({ cached: false, ...result });
+    const totalDuration = Date.now() - requestStart;
+    console.log(`\n[Handler] ===== SCAN COMPLETE =====`);
+    console.log(`[Handler] Total duration: ${totalDuration}ms`);
+    console.log(`[Handler] Verdict: ${verdict} (${confidence} confidence)`);
+    console.log(`[Handler] Returning result to client\n`);
+
+    return res.status(200).json({
+      cached: false,
+      ...result,
+    });
   } catch (err) {
-    console.error("scan handler error:", err);
-    return res.status(500).json({ error: "Internal server error" });
+    const totalDuration = Date.now() - requestStart;
+    console.error(`\n[Handler] ===== ERROR =====`);
+    console.error(`[Handler] Error after ${totalDuration}ms:`, err.message);
+    console.error(`[Handler] Error stack:`, err.stack);
+    console.error(`[Handler] ====================\n`);
+
+    // Provide specific error messages
+    if (err.message?.includes("timeout")) {
+      return res.status(504).json({
+        error: "Request timeout",
+        message: "External API request timed out. Please try again.",
+      });
+    }
+
+    if (err.message?.includes("Failed to fetch")) {
+      return res.status(503).json({
+        error: "External service unavailable",
+        message: "Unable to reach external data sources. Please try again later.",
+      });
+    }
+
+    if (err.message?.includes("AI")) {
+      return res.status(500).json({
+        error: "AI processing error",
+        message: "Failed to process with AI. Please try again.",
+      });
+    }
+
+    return res.status(500).json({
+      error: "Internal server error",
+      message: err.message || "An unexpected error occurred",
+    });
   }
 }
-
