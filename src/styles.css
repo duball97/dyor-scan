@@ -105,6 +105,21 @@ body::before {
   letter-spacing: 4px;
 }
 
+.logo-text-header {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 20px;
+  font-weight: 900;
+  color: #ffffff;
+  text-decoration: none;
+  letter-spacing: 4px;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+.logo-text-header:hover {
+  color: #c0c0c0;
+}
+
 .site-nav {
   display: flex;
   gap: 32px;
@@ -676,6 +691,97 @@ body::before {
   letter-spacing: 0.3px;
 }
 
+.api-section {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 120px 32px;
+  background: linear-gradient(180deg, transparent 0%, rgba(10, 10, 10, 0.3) 50%, transparent 100%);
+  opacity: 0;
+  transform: translateY(40px);
+  animation: fadeInUp 0.8s ease-out 2s forwards;
+}
+
+.api-content {
+  max-width: 900px;
+  margin: 64px auto 0;
+  text-align: center;
+}
+
+.api-description {
+  margin-bottom: 48px;
+}
+
+.api-description p {
+  font-size: 18px;
+  color: #b0b0b0;
+  line-height: 1.8;
+  margin-bottom: 24px;
+}
+
+.api-description ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.api-description li {
+  padding: 12px 0;
+  color: #909090;
+  font-size: 16px;
+  line-height: 1.6;
+  position: relative;
+  padding-left: 24px;
+}
+
+.api-description li::before {
+  content: '→';
+  position: absolute;
+  left: 0;
+  color: #c0c0c0;
+  font-weight: bold;
+}
+
+.api-example {
+  margin: 48px 0;
+  padding: 32px;
+  background: linear-gradient(135deg, #0a0a0a 0%, #0f0f0f 100%);
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+}
+
+.api-example h3 {
+  margin: 0 0 24px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 20px;
+  color: #e0e0e0;
+  letter-spacing: 1px;
+}
+
+.api-cta {
+  margin-top: 48px;
+}
+
+.btn-secondary {
+  display: inline-block;
+  padding: 14px 32px;
+  background: transparent;
+  border: 1px solid #404040;
+  border-radius: 6px;
+  color: #c0c0c0;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 16px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  border-color: #606060;
+  color: #e0e0e0;
+  background: rgba(192, 192, 192, 0.05);
+  transform: translateY(-2px);
+}
+
 .how-it-works-section {
   max-width: 1400px;
   margin: 0 auto;
@@ -1099,6 +1205,7 @@ body::before {
   align-items: center;
   gap: 20px;
   padding: 60px 32px;
+  margin-top: 40px;
   margin-bottom: 32px;
   background: linear-gradient(135deg, #0d0d0d 0%, #1a1a1a 100%);
   border: 1px solid #2a2a2a;
@@ -1480,6 +1587,11 @@ body::before {
   font-weight: 400;
 }
 
+.analysis-text strong {
+  font-weight: 700;
+  color: #ffffff;
+}
+
 /* Legacy support for old cached results */
 .result-summary-section {
   margin-bottom: 32px;
@@ -1580,6 +1692,9 @@ body::before {
   font-weight: 700;
   color: #e0e0e0;
   display: block;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
 }
 
 .metric-value.positive {
@@ -2087,6 +2202,73 @@ body::before {
 .social-item:hover {
   border-color: #606060;
   background: linear-gradient(135deg, #151515 0%, #202020 100%);
+}
+
+.tweets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tweet-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, #0a0a0a 0%, #151515 100%);
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.tweet-item:hover {
+  border-color: #404040;
+  background: linear-gradient(135deg, #151515 0%, #1a1a1a 100%);
+}
+
+.tweet-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tweet-text {
+  margin: 0;
+  color: #b0b0b0;
+  font-size: 14px;
+  line-height: 1.6;
+  word-wrap: break-word;
+}
+
+.tweet-date {
+  font-size: 12px;
+  color: #606060;
+}
+
+.tweet-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #606060;
+}
+
+.tweet-link {
+  align-self: flex-start;
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid #404040;
+  border-radius: 4px;
+  color: #3b82f6;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.tweet-link:hover {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  color: #60a5fa;
 }
 
 .security-risks {
@@ -2799,6 +2981,7 @@ body::before {
   }
 
   .features-section,
+  .api-section,
   .how-it-works-section,
   .scan-section,
   .cta-section {
@@ -3162,6 +3345,7 @@ body::before {
   }
 
   .features-section,
+  .api-section,
   .how-it-works-section,
   .scan-section,
   .cta-section {

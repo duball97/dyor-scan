@@ -58,6 +58,58 @@ function ScoreCircle({ score }) {
   );
 }
 
+// Format price to prevent overflow - intelligently choose decimal places
+function formatPrice(price) {
+  if (!price) return "N/A";
+  
+  const numPrice = parseFloat(price);
+  if (isNaN(numPrice)) return "N/A";
+  
+  // For very small prices (< 0.0001), show more decimals
+  if (numPrice < 0.0001) {
+    return `$${numPrice.toFixed(8)}`;
+  }
+  // For small prices (< 1), show 6 decimals
+  else if (numPrice < 1) {
+    return `$${numPrice.toFixed(6)}`;
+  }
+  // For medium prices (< 1000), show 4 decimals
+  else if (numPrice < 1000) {
+    return `$${numPrice.toFixed(4)}`;
+  }
+  // For larger prices, show 2 decimals
+  else {
+    return `$${numPrice.toFixed(2)}`;
+  }
+}
+
+// Render text with markdown bold (**text**) converted to <strong> tags
+function renderWithBold(text) {
+  if (!text) return null;
+  
+  const parts = [];
+  let lastIndex = 0;
+  const boldRegex = /\*\*(.+?)\*\*/g;
+  let match;
+  
+  while ((match = boldRegex.exec(text)) !== null) {
+    // Add text before the bold
+    if (match.index > lastIndex) {
+      parts.push(text.substring(lastIndex, match.index));
+    }
+    // Add the bold text
+    parts.push(<strong key={match.index}>{match[1]}</strong>);
+    lastIndex = match.index + match[0].length;
+  }
+  
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+  
+  return parts.length > 0 ? parts : text;
+}
+
 function ScanResult({ result }) {
   const {
     tokenName,
@@ -81,6 +133,7 @@ function ScanResult({ result }) {
     fundamentals,
     birdeye,
     tokenScore,
+    twitterData,
   } = result;
 
   const [copySuccess, setCopySuccess] = useState(false);
@@ -343,14 +396,14 @@ function ScanResult({ result }) {
               if (trimmed.match(/^[•\-\*]\s/) || trimmed.match(/^[0-9]+\.\s/)) {
                 return (
                   <div key={idx} style={{ marginBottom: '0.5rem', paddingLeft: '1rem' }}>
-                    {trimmed}
+                    {renderWithBold(trimmed)}
                   </div>
                 );
               }
               // Convert regular lines to bullet points
               return (
                 <div key={idx} style={{ marginBottom: '0.5rem', paddingLeft: '1rem' }}>
-                  • {trimmed}
+                  • {renderWithBold(trimmed)}
                 </div>
               );
             })}
@@ -361,14 +414,14 @@ function ScanResult({ result }) {
       {fundamentalsAnalysis && (
         <div className="analysis-section fundamentals-section">
           <h3 className="analysis-section-title">FUNDAMENTALS</h3>
-          <p className="analysis-text">{fundamentalsAnalysis}</p>
+          <p className="analysis-text">{renderWithBold(fundamentalsAnalysis)}</p>
         </div>
       )}
 
       {hypeAnalysis && (
         <div className="analysis-section hype-section">
           <h3 className="analysis-section-title">HYPE</h3>
-          <p className="analysis-text">{hypeAnalysis}</p>
+          <p className="analysis-text">{renderWithBold(hypeAnalysis)}</p>
         </div>
       )}
 
@@ -402,7 +455,7 @@ function ScanResult({ result }) {
         {marketData?.price && (
           <div className="metric-card">
             <div className="metric-label">Price</div>
-            <div className="metric-value">${parseFloat(marketData.price).toFixed(8)}</div>
+            <div className="metric-value">{formatPrice(marketData.price)}</div>
           </div>
         )}
         {marketData?.liquidity && (
@@ -519,6 +572,44 @@ function ScanResult({ result }) {
                 📱 Telegram
               </a>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* X Posts */}
+      {twitterData && twitterData.tweets && twitterData.tweets.length > 0 && (
+        <div className="result-section">
+          <h3>Recent X Posts</h3>
+          <div className="tweets-list">
+            {twitterData.tweets
+              .filter(tweet => tweet.tweetUrl) // Only show tweets with URLs
+              .slice(0, 5)
+              .map((tweet, idx) => (
+                <div key={idx} className="tweet-item">
+                  <div className="tweet-content">
+                    <p className="tweet-text">{tweet.text || "No text available"}</p>
+                    {tweet.date && (
+                      <span className="tweet-date">
+                        {new Date(tweet.date).toLocaleDateString()}
+                      </span>
+                    )}
+                    {(tweet.likes || tweet.retweets) && (
+                      <div className="tweet-stats">
+                        {tweet.likes && <span>❤️ {tweet.likes}</span>}
+                        {tweet.retweets && <span>🔄 {tweet.retweets}</span>}
+                      </div>
+                    )}
+                  </div>
+                  <a 
+                    href={tweet.tweetUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="tweet-link"
+                  >
+                    View on X →
+                  </a>
+                </div>
+              ))}
           </div>
         </div>
       )}

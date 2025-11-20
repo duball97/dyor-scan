@@ -6,6 +6,7 @@ function Documentation() {
     <div className="app">
       <header className="site-header">
         <div className="site-header-content">
+          <Link to="/" className="logo-text-header">DYOR</Link>
           <nav className="site-nav">
             <Link to="/" className="">Home</Link>
             <Link to="/docs" className="active">Documentation</Link>

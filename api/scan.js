@@ -487,6 +487,9 @@ async function getTwitterFromNitter(twitterUrl) {
     const $ = cheerio.load(html);
 
     const tweets = [];
+    // Extract username from Twitter URL
+    const usernameMatch = twitterUrl.match(/(?:twitter\.com|x\.com)\/([^\/\?]+)/);
+    const username = usernameMatch ? usernameMatch[1] : null;
 
     $(".timeline-item").each((i, el) => {
       if (i >= 5) return; // Only first 5 tweets
@@ -495,12 +498,28 @@ async function getTwitterFromNitter(twitterUrl) {
       const date = $(el).find("time").attr("datetime");
       const likes = $(el).find(".likes .icon-container").text().trim();
       const retweets = $(el).find(".retweets .icon-container").text().trim();
+      
+      // Try to extract tweet ID from the link
+      const tweetLink = $(el).find("a").attr("href");
+      let tweetId = null;
+      let tweetUrl = null;
+      
+      if (tweetLink) {
+        // Extract tweet ID from Nitter link format: /username/status/1234567890
+        const idMatch = tweetLink.match(/\/status\/(\d+)/);
+        if (idMatch && username) {
+          tweetId = idMatch[1];
+          tweetUrl = `https://x.com/${username}/status/${tweetId}`;
+        }
+      }
 
       tweets.push({
         text,
         date,
         likes,
         retweets,
+        tweetId,
+        tweetUrl,
       });
     });
 
@@ -1004,9 +1023,9 @@ async function classifyNarrative({
     console.log(`[Classification] Twitter evidence: ${twitterEvidence?.loreTweet ? "found" : "none"}`);
 
     const prompt = `
-You are a balanced crypto analyst evaluating token narratives objectively.
+You are a professional cryptocurrency analyst conducting objective narrative verification.
 
-Analyze this token's narrative claims with a fair, constructive perspective:
+Analyze this token's narrative claims using rigorous analytical standards:
 
 NARRATIVE CLAIM:
 ${narrativeClaim}
@@ -1019,32 +1038,32 @@ ${JSON.stringify(entities, null, 2)}
 ${evidenceSummary}
 ${twitterSummary}
 
-Evaluate:
+Evaluation Criteria:
 
-1. Does the narrative reference real events, products, or concepts?
-2. Are the mentioned entities legitimate?
-3. What's the nature of the association (official vs. inspired)?
+1. Does the narrative reference verifiable real-world events, products, or concepts?
+2. Are the mentioned entities legitimate and accurately represented?
+3. What is the nature of the association (official partnership vs. inspiration vs. unsubstantiated claim)?
 
-Classify as:
-- CONFIRMED: Clear connection to verified real-world elements. The story checks out.
-- PARTIAL: Some real elements mixed with community-driven narrative. Common for memecoins.
-- UNVERIFIED: Limited evidence to verify claims. Could be legitimate but needs more proof.
+Classification:
+- CONFIRMED: Verified connection to legitimate real-world elements with supporting evidence.
+- PARTIAL: Mix of verified elements and unverified claims. Some associations may be overstated.
+- UNVERIFIED: Insufficient evidence to verify claims. May be legitimate but lacks substantiation.
 
-Write reasoning (3-4 sentences) that:
-- Acknowledges positives when they exist
-- Points out legitimate concerns without being alarmist
-- Provides balanced perspective - memecoins can be successful even if unverified
-- Helps investors make informed decisions
+Provide reasoning (3-4 sentences) that:
+- Presents factual findings objectively
+- Identifies verified elements and unverified claims
+- Highlights material risks and concerns
+- Enables informed investment decision-making
 
-Tone: Professional, fair, and constructive. Avoid being overly negative or dismissive.
+Tone: Professional, analytical, and objective. Maintain neutrality and focus on evidence-based assessment.
 
 Return STRICT JSON:
 
 {
   "verdict": "CONFIRMED" | "PARTIAL" | "UNVERIFIED",
-  "reasoning": "balanced explanation (3-4 sentences)",
+  "reasoning": "objective analysis (3-4 sentences)",
   "confidence": "high" | "medium" | "low",
-  "redFlags": ["only significant concerns, be selective"]
+  "redFlags": ["only material concerns, be selective"]
 }
 `;
 
@@ -1132,9 +1151,11 @@ async function generateSummary({ narrativeClaim, verdict, tokenData, tokenName }
     const sentiment = tokenData?.sentimentScore || 50;
     
     const prompt = `
-You're a crypto analyst. Write a concise bullet-point summary for ${tokenName || "this token"}.
+You are a professional cryptocurrency analyst. Provide a concise summary for ${tokenName || "this token"}.
 
-Format as 3-4 bullet points. Be direct and engaging.
+Format EXACTLY as follows:
+1. Two sentences (2-3 lines total) - focus on unique aspects, verdict, and key concerns/opportunities. Use **bold** for the most important information.
+2. Three one-line bullet points (each bullet point must be a single line) - use **bold** for key metrics, verdict, or critical information
 
 Context:
 - Narrative: ${narrativeClaim}
@@ -1142,15 +1163,29 @@ Context:
 - Score: ${score}/100
 - Sentiment: ${sentiment}/100
 
-Use bullet points (• or -). Keep each point short (one line). No fluff.
+CRITICAL: Do NOT mention obvious facts like "uses Solana blockchain" or generic blockchain features. Focus on:
+- What makes this token unique or concerning
+- Verdict status and what it means
+- Key risks or opportunities
+- Notable metrics that stand out
+
+Structure:
+[Two sentences with **bold** for important info - avoid obvious statements]
+
+• [First bullet point - one line only, use **bold** for key terms]
+• [Second bullet point - one line only, use **bold** for key terms]
+• [Third bullet point - one line only, use **bold** for key terms]
+
+Use markdown **bold** syntax for: verdict status, scores, critical metrics, risk levels, and key findings.
+Keep each bullet point to a single line. Be concise and factual. Avoid stating obvious or generic information.
 `;
 
     console.log(`[Summary] Calling OpenAI...`);
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.8,
-      max_tokens: 100,
+      temperature: 0.7,
+      max_tokens: 150,
     });
 
     const text = completion.choices[0]?.message?.content?.trim();
@@ -1179,7 +1214,7 @@ async function generateFundamentals({ tokenData, verdict, reasoning }) {
     const risks = tokenData?.securityData?.risks?.length || 0;
     
     const prompt = `
-Break down the hard numbers for this token. 3-4 sentences.
+Analyze the fundamental metrics for this token. Provide a concise assessment in 2 sentences maximum.
 
 DATA:
 - Score: ${score}/100
@@ -1190,9 +1225,11 @@ DATA:
 - Risk flags: ${risks}
 - Verdict: ${verdict}
 
-Tell me: Are these numbers good, mid, or concerning? What stands out? Be straight up.
+CRITICAL: Be extremely concise. Focus only on what stands out - concerning metrics, security issues, or notable strengths. Skip obvious statements.
 
-Tone: Direct, analytical, no BS. "This looks solid because X" or "These numbers are weak - here's why"
+Use markdown **bold** syntax for: specific numbers/metrics, security status, risk levels, verdict, and key conclusions.
+
+Tone: Professional, analytical, and objective. Maximum 2 sentences.
 `;
 
     console.log(`[Fundamentals] Calling OpenAI...`);
@@ -1200,7 +1237,7 @@ Tone: Direct, analytical, no BS. "This looks solid because X" or "These numbers 
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
-      max_tokens: 200,
+      max_tokens: 100,
     });
 
     const text = completion.choices[0]?.message?.content?.trim();
@@ -1227,7 +1264,7 @@ async function generateHype({ tokenData, narrativeClaim }) {
     const hasTelegram = !!tokenData?.telegramData;
     
     const prompt = `
-What's the vibe around this token? 2-3 sentences.
+Assess the market sentiment and community activity for this token. Provide a concise analysis in 1-2 sentences maximum.
 
 DATA:
 - Sentiment score: ${sentiment}/100
@@ -1236,17 +1273,19 @@ DATA:
 - Social presence: ${hasTwitter ? "✓ Twitter" : "✗ Twitter"}, ${hasTelegram ? "✓ Telegram" : "✗ Telegram"}
 - Narrative: ${narrativeClaim.substring(0, 100)}...
 
-Is this heating up or cooling down? Is there real momentum or just noise? Be real about the energy.
+CRITICAL: Be extremely concise. Focus only on notable price movements, volume spikes, or concerning lack of activity. Skip obvious statements.
 
-Tone: Honest and direct. "Community is buzzing" or "Pretty quiet, not much happening" - call it as you see it.
+Use markdown **bold** syntax for: sentiment scores, volume numbers, price changes, and key conclusions about market activity.
+
+Tone: Professional and objective. Maximum 2 sentences. Be direct and avoid filler.
 `;
 
     console.log(`[Hype] Calling OpenAI...`);
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.8,
-      max_tokens: 150,
+      temperature: 0.7,
+      max_tokens: 80,
     });
 
     const text = completion.choices[0]?.message?.content?.trim();

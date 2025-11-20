@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate 
 import ScanForm from "./components/ScanForm.jsx";
 import ScanResult from "./components/ScanResult.jsx";
 import Documentation from "./pages/Documentation.jsx";
+import ApiKeys from "./pages/ApiKeys.jsx";
 
 const loadingMessages = [
   "Analyzing contract data...",
@@ -108,10 +109,12 @@ function AppContent() {
     <div className="app">
       <header className="site-header">
         <div className="site-header-content">
+          <Link to="/" className="logo-text-header">DYOR</Link>
           <nav className="site-nav">
             <Link to="/" className={location.pathname === '/' ? 'active' : ''}>Home</Link>
             <Link to="/docs" className={location.pathname === '/docs' ? 'active' : ''}>Documentation</Link>
             <a href="#how-it-works" onClick={scrollToHowItWorks}>How It Works</a>
+            <Link to="/api-keys" className={location.pathname === '/api-keys' ? 'active' : ''}>API Keys</Link>
           </nav>
 
           <div className="site-header-actions">
@@ -332,6 +335,57 @@ function AppContent() {
           </div>
         </section>
 
+        <section className="api-section">
+          <div className="section-header">
+            <h2 className="section-title">API Access</h2>
+            <p className="section-subtitle">Integrate DYOR Scanner into your platform with our REST API</p>
+          </div>
+          
+          <div className="api-content">
+            <div className="api-description">
+              <p>
+                Build token analysis into your application with our simple REST API. 
+                No setup required - just make HTTP requests and get comprehensive token intelligence.
+              </p>
+              <ul style={{ textAlign: 'left', maxWidth: '600px', margin: '20px auto' }}>
+                <li>Simple REST API - works with any programming language</li>
+                <li>No database setup required on your end</li>
+                <li>Real-time token analysis with AI-powered verification</li>
+                <li>Rate limits based on your tier</li>
+                <li>Comprehensive documentation and examples</li>
+              </ul>
+            </div>
+            
+            <div className="api-example">
+              <h3>Quick Example</h3>
+              <pre className="code-block" style={{ textAlign: 'left', maxWidth: '700px', margin: '0 auto' }}>{`fetch('https://your-domain.com/api/scan', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    contractAddress: 'So11111111111111111111111111111111111111112'
+  })
+})
+.then(res => res.json())
+.then(data => {
+  console.log('Verdict:', data.verdict);
+  console.log('Score:', data.tokenScore);
+});`}</pre>
+            </div>
+            
+            <div className="api-cta">
+              <Link to="/api-keys" className="btn-cta" style={{ display: 'inline-block', marginTop: '20px' }}>
+                Get Your API Key
+              </Link>
+              <Link to="/docs" className="btn-secondary" style={{ display: 'inline-block', marginTop: '20px', marginLeft: '15px' }}>
+                View Documentation
+              </Link>
+            </div>
+          </div>
+        </section>
+
         <section className="scan-section" ref={scanSectionRef}>
           <div className="scan-container">
             <div className="scan-header">
@@ -386,6 +440,7 @@ function App() {
     <Router>
       <Routes>
         <Route path="/docs" element={<Documentation />} />
+        <Route path="/api-keys" element={<ApiKeys />} />
         <Route path="/" element={<AppContent />} />
       </Routes>
     </Router>
