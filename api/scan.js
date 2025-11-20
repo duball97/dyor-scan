@@ -893,11 +893,11 @@ CONTEXT:
 ${fullContext}
 `;
 
-    console.log(`[Narrative] Calling OpenAI API (gpt-4o-mini)...`);
+    console.log(`[Narrative] Calling OpenAI API (gpt-5-nano)...`);
     const aiStart = Date.now();
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: "gpt-5-nano",
     messages: [
       {
         role: "user",
@@ -935,8 +935,7 @@ ${fullContext}
         },
       },
     },
-      temperature: 0.7,
-      max_tokens: 1000,
+      max_completion_tokens: 1000,
     });
 
     const aiDuration = Date.now() - aiStart;
@@ -1067,11 +1066,11 @@ Return STRICT JSON:
 }
 `;
 
-    console.log(`[Classification] Calling OpenAI API (gpt-4o-mini)...`);
+    console.log(`[Classification] Calling OpenAI API (gpt-5-nano)...`);
     const aiStart = Date.now();
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: "gpt-5-nano",
     messages: [
       {
         role: "user",
@@ -1103,8 +1102,7 @@ Return STRICT JSON:
         },
       },
     },
-      temperature: 0.7,
-      max_tokens: 800,
+      max_completion_tokens: 800,
     });
 
     const aiDuration = Date.now() - aiStart;
@@ -1182,10 +1180,9 @@ Keep each bullet point to a single line. Be concise and factual. Avoid stating o
 
     console.log(`[Summary] Calling OpenAI...`);
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-5-nano",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-      max_tokens: 150,
+      max_completion_tokens: 150,
     });
 
     const text = completion.choices[0]?.message?.content?.trim();
@@ -1234,10 +1231,9 @@ Tone: Professional, analytical, and objective. Maximum 2 sentences.
 
     console.log(`[Fundamentals] Calling OpenAI...`);
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-5-nano",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-      max_tokens: 100,
+      max_completion_tokens: 100,
     });
 
     const text = completion.choices[0]?.message?.content?.trim();
@@ -1282,10 +1278,9 @@ Tone: Professional and objective. Maximum 2 sentences. Be direct and avoid fille
 
     console.log(`[Hype] Calling OpenAI...`);
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-5-nano",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-      max_tokens: 80,
+      max_completion_tokens: 80,
     });
 
     const text = completion.choices[0]?.message?.content?.trim();
