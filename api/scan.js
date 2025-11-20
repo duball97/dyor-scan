@@ -355,6 +355,106 @@ function computeMarketSentiment(birdeye) {
   return Math.round(sentiment * 100); // 0–100 score
 }
 
+// Calculate comprehensive token score (1-100)
+function calculateTokenScore(tokenData) {
+  let score = 50; // Start at neutral
+  
+  const { marketData, fundamentals, securityData, socials, sentimentScore } = tokenData;
+  
+  // Liquidity Score (0-20 points)
+  if (marketData?.liquidity) {
+    const liquidity = marketData.liquidity;
+    if (liquidity > 1000000) score += 15; // >$1M
+    else if (liquidity > 500000) score += 12; // >$500K
+    else if (liquidity > 100000) score += 8; // >$100K
+    else if (liquidity > 50000) score += 5; // >$50K
+    else if (liquidity > 10000) score += 3; // >$10K
+  } else {
+    score -= 10; // No liquidity is bad
+  }
+  
+  // Holder Count Score (0-15 points)
+  if (fundamentals?.holderCount) {
+    const holders = fundamentals.holderCount;
+    if (holders > 10000) score += 15;
+    else if (holders > 5000) score += 12;
+    else if (holders > 1000) score += 10;
+    else if (holders > 500) score += 7;
+    else if (holders > 100) score += 5;
+    else if (holders > 50) score += 3;
+  } else {
+    score -= 5;
+  }
+  
+  // Market Cap / Supply Score (0-10 points)
+  if (fundamentals?.supply && marketData?.price) {
+    const supply = parseInt(fundamentals.supply) || 0;
+    const price = parseFloat(marketData.price) || 0;
+    const marketCap = (supply * price) / Math.pow(10, fundamentals.decimals || 9);
+    
+    if (marketCap > 10000000) score += 10; // >$10M
+    else if (marketCap > 1000000) score += 8; // >$1M
+    else if (marketCap > 100000) score += 6; // >$100K
+    else if (marketCap > 10000) score += 4; // >$10K
+    else if (marketCap > 1000) score += 2;
+  }
+  
+  // Security Score (0-15 points)
+  if (securityData) {
+    if (!securityData.risks || securityData.risks.length === 0) {
+      score += 15; // No risks = good
+    } else {
+      const highRisks = securityData.risks.filter(r => r.level === 'high').length;
+      const mediumRisks = securityData.risks.filter(r => r.level === 'medium').length;
+      
+      score -= highRisks * 5; // Each high risk = -5
+      score -= mediumRisks * 2; // Each medium risk = -2
+      
+      // Check for rug risks
+      if (fundamentals?.mintAuthority === null || fundamentals?.freezeAuthority === null) {
+        score += 5; // No mint/freeze authority = good
+      }
+      if (fundamentals?.mintAuthority) {
+        score -= 8; // Has mint authority = risk
+      }
+      if (fundamentals?.freezeAuthority) {
+        score -= 8; // Has freeze authority = risk
+      }
+    }
+  } else {
+    score -= 3; // No security data = unknown
+  }
+  
+  // Social Presence Score (0-10 points)
+  if (socials) {
+    let socialCount = 0;
+    if (socials.website) socialCount++;
+    if (socials.x) socialCount++;
+    if (socials.telegram) socialCount++;
+    score += socialCount * 3;
+  } else {
+    score -= 5;
+  }
+  
+  // Volume/Activity Score (0-10 points)
+  if (marketData?.volume24h) {
+    const volume = marketData.volume24h;
+    if (volume > 1000000) score += 10; // >$1M
+    else if (volume > 500000) score += 8;
+    else if (volume > 100000) score += 6;
+    else if (volume > 50000) score += 4;
+    else if (volume > 10000) score += 2;
+  }
+  
+  // Sentiment Score (0-10 points)
+  if (sentimentScore !== null && sentimentScore !== undefined) {
+    score += (sentimentScore / 100) * 10;
+  }
+  
+  // Clamp between 1 and 100
+  return Math.max(1, Math.min(100, Math.round(score)));
+}
+
 // Fetch Twitter via Nitter (free Twitter scraper)
 async function getTwitterFromNitter(twitterUrl) {
   const startTime = Date.now();
@@ -621,6 +721,22 @@ async function getTokenData(contractAddress) {
     console.log(`[TokenData] Sentiment score: ${sentimentScore || "N/A"}`);
     
     const socials = dex?.socials || null;
+    
+    // Calculate comprehensive token score
+    const tokenScoreData = {
+      marketData: {
+        price: birdeye?.price || dex?.priceUsd || null,
+        liquidity: birdeye?.liquidity || dex?.liquidity || null,
+        volume24h: birdeye?.volume24h || dex?.volume24h || null,
+      },
+      fundamentals: helius,
+      securityData: rug,
+      socials,
+      sentimentScore,
+    };
+    
+    const tokenScore = calculateTokenScore(tokenScoreData);
+    console.log(`[TokenData] Comprehensive token score: ${tokenScore}/100`);
     console.log(`[TokenData] Social links: website=${!!socials?.website}, twitter=${!!socials?.x}, telegram=${!!socials?.telegram}`);
 
     // Fetch social data in parallel
@@ -701,6 +817,7 @@ Sentiment Score: ${sentimentScore || "N/A"}
       twitterData,
       telegramData,
       websiteData,
+      tokenScore,
     };
   } catch (error) {
     const overallDuration = Date.now() - overallStart;
@@ -886,10 +1003,10 @@ async function classifyNarrative({
     console.log(`[Classification] Web evidence: ${webEvidence?.articles?.length || 0} articles`);
     console.log(`[Classification] Twitter evidence: ${twitterEvidence?.loreTweet ? "found" : "none"}`);
 
-  const prompt = `
-You are an expert crypto narrative fact-checker and analyst.
+    const prompt = `
+You are a balanced crypto analyst evaluating token narratives objectively.
 
-Your job is to analyze whether the narrative this token is claiming has basis in reality.
+Analyze this token's narrative claims with a fair, constructive perspective:
 
 NARRATIVE CLAIM:
 ${narrativeClaim}
@@ -902,30 +1019,32 @@ ${JSON.stringify(entities, null, 2)}
 ${evidenceSummary}
 ${twitterSummary}
 
-Analyze this deeply:
+Evaluate:
 
-1. Is the core narrative referencing a REAL event, product, or announcement?
-2. Are the entities (companies, products, people) real?
-3. Is this token officially affiliated, or just riding the narrative?
-4. What's the credibility level?
+1. Does the narrative reference real events, products, or concepts?
+2. Are the mentioned entities legitimate?
+3. What's the nature of the association (official vs. inspired)?
 
 Classify as:
-- CONFIRMED: The narrative references real, verifiable events/products. The entities are real.
-- PARTIAL: Mix of truth and hype. Real event but exaggerated claims or unofficial association.
-- UNVERIFIED: Cannot verify the narrative's claims. Possibly fabricated or misleading.
+- CONFIRMED: Clear connection to verified real-world elements. The story checks out.
+- PARTIAL: Some real elements mixed with community-driven narrative. Common for memecoins.
+- UNVERIFIED: Limited evidence to verify claims. Could be legitimate but needs more proof.
 
-Provide detailed reasoning (3-4 sentences) explaining:
-- What's real vs what's questionable
-- Any red flags or concerns
-- What investors should know
+Write reasoning (3-4 sentences) that:
+- Acknowledges positives when they exist
+- Points out legitimate concerns without being alarmist
+- Provides balanced perspective - memecoins can be successful even if unverified
+- Helps investors make informed decisions
+
+Tone: Professional, fair, and constructive. Avoid being overly negative or dismissive.
 
 Return STRICT JSON:
 
 {
   "verdict": "CONFIRMED" | "PARTIAL" | "UNVERIFIED",
-  "reasoning": "detailed explanation (3-4 sentences)",
+  "reasoning": "balanced explanation (3-4 sentences)",
   "confidence": "high" | "medium" | "low",
-  "redFlags": ["list of concerns if any"]
+  "redFlags": ["only significant concerns, be selective"]
 }
 `;
 
@@ -1011,33 +1130,43 @@ async function generateUserNotes({
   confidence,
   redFlags,
   entities,
+  tokenData,
 }) {
   const startTime = Date.now();
   console.log(`\n[UserNotes] ===== Starting user notes generation =====`);
   console.log(`[UserNotes] Verdict: ${verdict}, Confidence: ${confidence}`);
   
   try {
-    const redFlagsText =
-      redFlags && redFlags.length > 0
-    ? `\nRED FLAGS: ${redFlags.join(", ")}`
-        : "";
+    const score = tokenData?.tokenScore || 50;
+    const holders = tokenData?.fundamentals?.holderCount || null;
+    const liquidity = tokenData?.marketData?.liquidity || null;
+    const hasMintAuth = tokenData?.fundamentals?.mintAuthority || null;
+    const hasFreezeAuth = tokenData?.fundamentals?.freezeAuthority || null;
+    
+    const prompt = `
+You are a helpful crypto analyst writing a clear, balanced summary for investors. Be optimistic but realistic. Focus on facts and actionable insights.
 
-  const prompt = `
-You are writing analysis notes for crypto investors doing their own research (DYOR).
+Write a natural, conversational summary (180-220 words) that covers:
 
-Write a comprehensive but clear analysis (150-200 words) that covers:
+1. **What the token is about**: Briefly explain the narrative and purpose in simple terms
+2. **Token fundamentals**: Mention holders (${holders || "unknown"}), liquidity (${liquidity ? `$${(liquidity / 1000).toFixed(0)}K` : "unknown"}), and security status
+3. **Assessment**: Our verdict is ${verdict}. Explain this in a balanced way - highlight positives when they exist
+4. **What to know**: Practical insights for investors - opportunities and things to watch
 
-1. **What This Token Claims**: Summarize the narrative in plain language
-2. **Reality Check**: Our verdict (${verdict}) and why
-3. **Key Entities**: Who/what is being referenced (${entities.organizations?.join(", ") || "none"})
-4. **What This Means**: Practical implications for investors
-5. **Red Flags**: Any concerns or warnings${redFlags && redFlags.length > 0 ? ` (${redFlags.join(", ")})` : ""}
-
-Be direct, informative, and honest. Use a professional but accessible tone.
+Tone: Professional, encouraging, and helpful. Avoid being overly negative or aggressive. 
+- If the token has good fundamentals (holders, liquidity), mention those positively
+- If security checks pass, highlight that
+- If it's a meme token, acknowledge that's fine - many successful tokens are memes
+- Frame concerns constructively, not as "everything is bad"
 
 NARRATIVE: ${narrativeClaim}
-VERDICT: ${verdict} (${confidence} confidence)
-ANALYSIS: ${reasoning}${redFlagsText}
+VERDICT: ${verdict}
+REASONING: ${reasoning}
+SCORE: ${score}/100
+HOLDERS: ${holders || "unknown"}
+LIQUIDITY: ${liquidity ? `$${(liquidity / 1000).toFixed(0)}K` : "unknown"}
+MINT AUTHORITY: ${hasMintAuth ? "Yes (risk)" : "No (good)"}
+FREEZE AUTHORITY: ${hasFreezeAuth ? "Yes (risk)" : "No (good)"}
 `;
 
     console.log(`[UserNotes] Calling OpenAI API (gpt-4o-mini)...`);
@@ -1222,6 +1351,7 @@ export default async function handler(req, res) {
       confidence,
       redFlags,
       entities,
+      tokenData,
     });
     const notesDuration = Date.now() - notesStart;
     console.log(`[Handler] User notes generated in ${notesDuration}ms`);
@@ -1240,6 +1370,7 @@ export default async function handler(req, res) {
       fundamentals: tokenData.fundamentals,
       birdeye: tokenData.birdeye,
       sentimentScore: tokenData.sentimentScore,
+      tokenScore: tokenData.tokenScore,
       twitterData: tokenData.twitterData,
       telegramData: tokenData.telegramData,
       websiteData: tokenData.websiteData,

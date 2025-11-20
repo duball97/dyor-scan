@@ -68,6 +68,7 @@ function AppContent() {
       <header className="site-header">
         <div className="site-header-content">
           <div className="logo">
+            <img src="/logo.png" alt="DYOR" className="logo-image" />
             <span className="logo-text">DYOR</span>
           </div>
           
@@ -255,6 +256,9 @@ function AppContent() {
 
       <footer className="app-footer">
         <div className="app-footer-content">
+          <div className="app-footer-logo">
+            <img src="/logo.png" alt="DYOR" className="footer-logo-image" />
+          </div>
           <div className="app-footer-links">
             <Link to="/">Home</Link>
             <Link to="/docs">Documentation</Link>
