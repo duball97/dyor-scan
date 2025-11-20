@@ -1272,7 +1272,7 @@ export default async function handler(req, res) {
   // CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   if (req.method === "OPTIONS") {
     console.log(`[Handler] OPTIONS request - returning 200`);
@@ -1286,6 +1286,71 @@ export default async function handler(req, res) {
       error: "Method not allowed",
       message: "Only POST requests are supported",
     });
+  }
+
+  // API Key authentication (optional - only if enabled)
+  let apiKeyData = null;
+  let rateLimitInfo = null;
+  let apiAuth = null;
+  
+  if (process.env.ENABLE_API_KEYS === 'true') {
+    try {
+      apiAuth = await import('./utils/apiAuth.js');
+      const apiKey = apiAuth.extractApiKey(req);
+      const validation = await apiAuth.validateApiKey(apiKey);
+    
+    if (!validation.valid) {
+      // If API key is provided but invalid, reject
+      if (apiKey) {
+        console.log(`[Handler] ❌ Invalid API key`);
+        return res.status(401).json({
+          error: "Unauthorized",
+          message: validation.error || "Invalid API key"
+        });
+      }
+      // If no API key and API keys are required, reject
+      if (process.env.REQUIRE_API_KEYS === 'true') {
+        return res.status(401).json({
+          error: "Unauthorized",
+          message: "API key is required"
+        });
+      }
+      // Otherwise, continue without API key (for frontend usage)
+    } else {
+      apiKeyData = validation.keyData;
+      console.log(`[Handler] ✅ API key validated - Tier: ${apiKeyData.tier}`);
+      
+      // Check rate limits
+      rateLimitInfo = await apiAuth.checkRateLimit(
+        apiKeyData.id,
+        apiKeyData.rateLimitPerMinute,
+        apiKeyData.rateLimitPerDay
+      );
+      
+      if (!rateLimitInfo.allowed) {
+        console.log(`[Handler] ❌ Rate limit exceeded - ${rateLimitInfo.limit}`);
+        const retryAfter = Math.ceil((rateLimitInfo.resetAt.getTime() - Date.now()) / 1000);
+        res.setHeader('Retry-After', retryAfter);
+        res.setHeader('X-RateLimit-Limit', apiKeyData.rateLimitPerMinute);
+        res.setHeader('X-RateLimit-Remaining', 0);
+        res.setHeader('X-RateLimit-Reset', Math.floor(rateLimitInfo.resetAt.getTime() / 1000));
+        
+        return res.status(429).json({
+          error: "Rate limit exceeded",
+          message: `You have exceeded your rate limit of ${apiKeyData.rateLimitPerMinute} requests per ${rateLimitInfo.limit}`,
+          retryAfter: retryAfter
+        });
+      }
+      
+      // Set rate limit headers
+      res.setHeader('X-RateLimit-Limit', apiKeyData.rateLimitPerMinute);
+      res.setHeader('X-RateLimit-Remaining', rateLimitInfo.remaining?.perMinute || 0);
+      res.setHeader('X-RateLimit-Reset', Math.floor(rateLimitInfo.resetAt?.perMinute?.getTime() / 1000) || 0);
+    }
+    } catch (apiAuthErr) {
+      console.error('[Handler] API auth error:', apiAuthErr);
+      // Continue without API auth if there's an error
+    }
   }
 
   try {
@@ -1336,10 +1401,26 @@ export default async function handler(req, res) {
     ) {
       const totalDuration = Date.now() - requestStart;
       console.log(`[Handler] ✅ Cache hit! Returning cached result (${totalDuration}ms total)\n`);
-        return res.status(200).json({
-          cached: true,
-          ...cached.result_json,
-        });
+      
+      // Track usage if API key is present
+      if (apiKeyData && apiAuth) {
+        apiAuth.trackUsage(apiKeyData.id, trimmedAddress, totalDuration, true).catch(console.error);
+      }
+      
+      const response = {
+        success: apiKeyData ? true : undefined,
+        cached: true,
+        ...cached.result_json,
+      };
+      
+      if (apiKeyData && rateLimitInfo) {
+        response.usage = {
+          requestsRemaining: rateLimitInfo.remaining?.perMinute || 0,
+          resetAt: rateLimitInfo.resetAt?.perMinute?.toISOString()
+        };
+      }
+      
+      return res.status(200).json(response);
     }
     
     console.log(`[Handler] Cache miss (${cacheDuration}ms) - proceeding with fresh scan`);
@@ -1471,10 +1552,25 @@ export default async function handler(req, res) {
     console.log(`[Handler] Verdict: ${verdict} (${confidence} confidence)`);
     console.log(`[Handler] Returning result to client\n`);
 
-    return res.status(200).json({
+    // Track usage if API key is present
+    if (apiKeyData && apiAuth) {
+      apiAuth.trackUsage(apiKeyData.id, trimmedAddress, totalDuration, false).catch(console.error);
+    }
+
+    const response = {
+      success: apiKeyData ? true : undefined,
       cached: false,
       ...result,
-    });
+    };
+    
+    if (apiKeyData && rateLimitInfo) {
+      response.usage = {
+        requestsRemaining: rateLimitInfo.remaining?.perMinute || 0,
+        resetAt: rateLimitInfo.resetAt?.perMinute?.toISOString()
+      };
+    }
+
+    return res.status(200).json(response);
   } catch (err) {
     const totalDuration = Date.now() - requestStart;
     console.error(`\n[Handler] ===== ERROR =====`);
