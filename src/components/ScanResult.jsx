@@ -67,6 +67,9 @@ function ScanResult({ result }) {
     verdict,
     verdictReasoning,
     notesForUser,
+    summary,
+    fundamentalsAnalysis,
+    hypeAnalysis,
     projectSummary,
     entities,
     cached,
@@ -92,9 +95,30 @@ function ScanResult({ result }) {
     report += `VERDICT: ${verdict || "N/A"} (${confidence || "N/A"} confidence)\n`;
     report += `\n${"=".repeat(50)}\n\n`;
 
-    report += `SUMMARY\n`;
-    report += `${"-".repeat(50)}\n`;
-    report += `${notesForUser || "No summary available."}\n\n`;
+    if (summary) {
+      report += `SUMMARY\n`;
+      report += `${"-".repeat(50)}\n`;
+      report += `${summary}\n\n`;
+    }
+
+    if (fundamentalsAnalysis) {
+      report += `FUNDAMENTALS\n`;
+      report += `${"-".repeat(50)}\n`;
+      report += `${fundamentalsAnalysis}\n\n`;
+    }
+
+    if (hypeAnalysis) {
+      report += `HYPE\n`;
+      report += `${"-".repeat(50)}\n`;
+      report += `${hypeAnalysis}\n\n`;
+    }
+
+    // Legacy support
+    if (!summary && !fundamentalsAnalysis && !hypeAnalysis && notesForUser) {
+      report += `ANALYSIS\n`;
+      report += `${"-".repeat(50)}\n`;
+      report += `${notesForUser}\n\n`;
+    }
 
     if (marketData) {
       report += `MARKET DATA\n`;
@@ -107,7 +131,7 @@ function ScanResult({ result }) {
     }
 
     if (fundamentals) {
-      report += `FUNDAMENTALS\n`;
+      report += `ON-CHAIN DATA\n`;
       report += `${"-".repeat(50)}\n`;
       if (fundamentals.supply) report += `Supply: ${fundamentals.supply}\n`;
       if (fundamentals.holderCount) report += `Holders: ${fundamentals.holderCount}\n`;
@@ -206,34 +230,60 @@ function ScanResult({ result }) {
     }
   };
 
-  // Parse summary into structured sections
+  // Parse summary into structured sections - only if text has clear headers
   const parseSummary = (text) => {
     if (!text) return null;
     
-    const sections = {
-      about: "",
-      fundamentals: "",
-      assessment: "",
-      insights: "",
-    };
+    // Check if text has clear markdown-style section headers
+    const markdownHeaderPattern = /\*\*(.+?)\*\*:\s*/g;
+    const headers = [...text.matchAll(markdownHeaderPattern)];
     
-    // Try to extract structured parts (AI might format it)
-    const aboutMatch = text.match(/(?:about|what the token|narrative|purpose)[^]*?(?=fundamentals|assessment|verdict|what to know|insights|$)/i);
-    const fundamentalsMatch = text.match(/(?:fundamentals|holders|liquidity|security)[^]*?(?=assessment|verdict|what to know|insights|$)/i);
-    const assessmentMatch = text.match(/(?:verdict|assessment|analysis|evaluation)[^]*?(?=what to know|insights|conclusion|$)/i);
-    const insightsMatch = text.match(/(?:what to know|insights|implications|considerations)[^]*?$/i);
-    
-    if (aboutMatch) sections.about = aboutMatch[0].trim();
-    if (fundamentalsMatch) sections.fundamentals = fundamentalsMatch[0].trim();
-    if (assessmentMatch) sections.assessment = assessmentMatch[0].trim();
-    if (insightsMatch) sections.insights = insightsMatch[0].trim();
-    
-    // If no structure found, use the whole text as about
-    if (!sections.about && !sections.fundamentals) {
-      sections.about = text;
+    if (headers.length > 0) {
+      // Text has markdown headers - parse them
+      const sections = {};
+      let lastIndex = 0;
+      
+      headers.forEach((match, idx) => {
+        const headerText = match[1].toLowerCase();
+        const startPos = match.index;
+        
+        // Get text before this header (if first header, it's the intro)
+        if (idx === 0 && startPos > 0) {
+          sections.intro = text.substring(0, startPos).trim();
+        }
+        
+        // Get text for this section (until next header or end)
+        const nextHeader = headers[idx + 1];
+        const endPos = nextHeader ? nextHeader.index : text.length;
+        const sectionText = text.substring(startPos + match[0].length, endPos).trim();
+        
+        // Map headers to section names - updated for new structure
+        if (headerText.includes('summary')) {
+          sections.summary = sectionText;
+        } else if (headerText.includes('narrative')) {
+          sections.narrative = sectionText;
+        } else if (headerText.includes('fundamentals') || headerText.includes('token fundamentals')) {
+          sections.fundamentals = sectionText;
+        } else if (headerText.includes('hype')) {
+          sections.hype = sectionText;
+        }
+        // Legacy support for old format
+        else if (headerText.includes('what this token') || headerText.includes('about this token')) {
+          sections.about = sectionText;
+        } else if (headerText.includes('reality check') || headerText.includes('verdict') || headerText.includes('assessment')) {
+          sections.assessment = sectionText;
+        } else if (headerText.includes('what this means') || headerText.includes('implications') || headerText.includes('what to know')) {
+          sections.insights = sectionText;
+        }
+      });
+      
+      if (Object.keys(sections).length > 0) {
+        return sections;
+      }
     }
     
-    return sections;
+    // No clear headers found - display as single block
+    return null;
   };
 
   const summarySections = parseSummary(notesForUser);
@@ -262,6 +312,17 @@ function ScanResult({ result }) {
       </div>
 
       <div className="result-actions">
+        <a 
+          href={`https://www.dexview.com/solana/${contractAddress}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-view-chart"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          View Chart
+        </a>
         <button onClick={handleCopyReport} className="btn-copy-report">
           {copySuccess ? "✓ Copied!" : "📋 Copy Report"}
         </button>
@@ -270,42 +331,52 @@ function ScanResult({ result }) {
         </button>
       </div>
 
-      {/* Structured Summary */}
-      <div className="result-summary-section">
-        <h3 className="summary-title">Summary</h3>
-        <div className="summary-content">
-          {summarySections ? (
-            <>
-              {summarySections.about && (
-                <div className="summary-block">
-                  <h4>About This Token</h4>
-                  <p>{summarySections.about}</p>
-                </div>
-              )}
-              {summarySections.fundamentals && (
-                <div className="summary-block">
-                  <h4>Fundamentals</h4>
-                  <p>{summarySections.fundamentals}</p>
-                </div>
-              )}
-              {summarySections.assessment && (
-                <div className="summary-block">
-                  <h4>Assessment</h4>
-                  <p>{summarySections.assessment}</p>
-                </div>
-              )}
-              {summarySections.insights && (
-                <div className="summary-block">
-                  <h4>What to Know</h4>
-                  <p>{summarySections.insights}</p>
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="summary-text">{notesForUser || "No summary available."}</p>
-          )}
+      {/* Analysis Sections */}
+      {summary && (
+        <div className="analysis-section summary-section">
+          <h3 className="analysis-section-title">SUMMARY</h3>
+          <p className="analysis-text">{summary}</p>
         </div>
-      </div>
+      )}
+
+      {fundamentalsAnalysis && (
+        <div className="analysis-section fundamentals-section">
+          <h3 className="analysis-section-title">FUNDAMENTALS</h3>
+          <p className="analysis-text">{fundamentalsAnalysis}</p>
+        </div>
+      )}
+
+      {hypeAnalysis && (
+        <div className="analysis-section hype-section">
+          <h3 className="analysis-section-title">HYPE</h3>
+          <p className="analysis-text">{hypeAnalysis}</p>
+        </div>
+      )}
+
+      {/* Legacy support for old cached results */}
+      {!summary && !fundamentalsAnalysis && !hypeAnalysis && notesForUser && (
+        <div className="result-summary-section">
+          <h3 className="summary-title">Analysis</h3>
+          <div className="summary-content">
+            {summarySections ? (
+              <>
+                {Object.entries(summarySections).map(([key, value]) => 
+                  value ? (
+                    <div className="summary-block" key={key}>
+                      {key !== 'intro' && <h4>{key.charAt(0).toUpperCase() + key.slice(1)}</h4>}
+                      <p className="summary-text">{value}</p>
+                    </div>
+                  ) : null
+                )}
+              </>
+            ) : (
+              <div className="summary-block">
+                <p className="summary-text">{notesForUser}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Key Metrics Grid */}
       <div className="metrics-grid">

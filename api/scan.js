@@ -1122,85 +1122,141 @@ Return STRICT JSON:
   }
 }
 
-// Generate user notes
-async function generateUserNotes({
-  narrativeClaim,
-  verdict,
-  reasoning,
-  confidence,
-  redFlags,
-  entities,
-  tokenData,
-}) {
+// Generate summary (TL;DR)
+async function generateSummary({ narrativeClaim, verdict, tokenData, tokenName }) {
   const startTime = Date.now();
-  console.log(`\n[UserNotes] ===== Starting user notes generation =====`);
-  console.log(`[UserNotes] Verdict: ${verdict}, Confidence: ${confidence}`);
+  console.log(`\n[Summary] ===== Starting summary generation =====`);
+  
+  try {
+    const score = tokenData?.tokenScore || 50;
+    const sentiment = tokenData?.sentimentScore || 50;
+    
+    const prompt = `
+You're a crypto analyst. Write a punchy 2-3 sentence summary for ${tokenName || "this token"}.
+
+What's the vibe? Should people care? Be direct and engaging.
+
+Context:
+- Narrative: ${narrativeClaim}
+- Verdict: ${verdict}
+- Score: ${score}/100
+- Sentiment: ${sentiment}/100
+
+Write like a human. Make it interesting. No fluff.
+`;
+
+    console.log(`[Summary] Calling OpenAI...`);
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.8,
+      max_tokens: 150,
+    });
+
+    const text = completion.choices[0]?.message?.content?.trim();
+    const duration = Date.now() - startTime;
+    console.log(`[Summary] ✅ Generated in ${duration}ms\n`);
+    
+    return text || "No summary available.";
+  } catch (error) {
+    console.error(`[Summary] ❌ Failed:`, error.message);
+    return "Analysis in progress...";
+  }
+}
+
+// Generate fundamentals analysis
+async function generateFundamentals({ tokenData, verdict, reasoning }) {
+  const startTime = Date.now();
+  console.log(`\n[Fundamentals] ===== Starting fundamentals generation =====`);
   
   try {
     const score = tokenData?.tokenScore || 50;
     const holders = tokenData?.fundamentals?.holderCount || null;
     const liquidity = tokenData?.marketData?.liquidity || null;
+    const volume24h = tokenData?.marketData?.volume24h || null;
     const hasMintAuth = tokenData?.fundamentals?.mintAuthority || null;
     const hasFreezeAuth = tokenData?.fundamentals?.freezeAuthority || null;
+    const risks = tokenData?.securityData?.risks?.length || 0;
     
     const prompt = `
-You are a helpful crypto analyst writing a clear, balanced summary for investors. Be optimistic but realistic. Focus on facts and actionable insights.
+Break down the hard numbers for this token. 3-4 sentences.
 
-Write a natural, conversational summary (180-220 words) that covers:
+DATA:
+- Score: ${score}/100
+- Holders: ${holders || "unknown"}
+- Liquidity: ${liquidity ? `$${(liquidity / 1000).toFixed(0)}K` : "unknown"}
+- Volume (24h): ${volume24h ? `$${(volume24h / 1000).toFixed(0)}K` : "unknown"}
+- Security: ${!hasMintAuth && !hasFreezeAuth ? "✓ Clean (no mint/freeze authority)" : "⚠ " + (hasMintAuth ? "Mint authority present" : "") + (hasFreezeAuth ? " Freeze authority present" : "")}
+- Risk flags: ${risks}
+- Verdict: ${verdict}
 
-1. **What the token is about**: Briefly explain the narrative and purpose in simple terms
-2. **Token fundamentals**: Mention holders (${holders || "unknown"}), liquidity (${liquidity ? `$${(liquidity / 1000).toFixed(0)}K` : "unknown"}), and security status
-3. **Assessment**: Our verdict is ${verdict}. Explain this in a balanced way - highlight positives when they exist
-4. **What to know**: Practical insights for investors - opportunities and things to watch
+Tell me: Are these numbers good, mid, or concerning? What stands out? Be straight up.
 
-Tone: Professional, encouraging, and helpful. Avoid being overly negative or aggressive. 
-- If the token has good fundamentals (holders, liquidity), mention those positively
-- If security checks pass, highlight that
-- If it's a meme token, acknowledge that's fine - many successful tokens are memes
-- Frame concerns constructively, not as "everything is bad"
-
-NARRATIVE: ${narrativeClaim}
-VERDICT: ${verdict}
-REASONING: ${reasoning}
-SCORE: ${score}/100
-HOLDERS: ${holders || "unknown"}
-LIQUIDITY: ${liquidity ? `$${(liquidity / 1000).toFixed(0)}K` : "unknown"}
-MINT AUTHORITY: ${hasMintAuth ? "Yes (risk)" : "No (good)"}
-FREEZE AUTHORITY: ${hasFreezeAuth ? "Yes (risk)" : "No (good)"}
+Tone: Direct, analytical, no BS. "This looks solid because X" or "These numbers are weak - here's why"
 `;
 
-    console.log(`[UserNotes] Calling OpenAI API (gpt-4o-mini)...`);
-    const aiStart = Date.now();
-
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
+    console.log(`[Fundamentals] Calling OpenAI...`);
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
-      max_tokens: 500,
+      max_tokens: 200,
     });
 
-    const aiDuration = Date.now() - aiStart;
-    console.log(`[UserNotes] OpenAI response received in ${aiDuration}ms`);
+    const text = completion.choices[0]?.message?.content?.trim();
+    const duration = Date.now() - startTime;
+    console.log(`[Fundamentals] ✅ Generated in ${duration}ms\n`);
+    
+    return text || "No fundamentals data available.";
+  } catch (error) {
+    console.error(`[Fundamentals] ❌ Failed:`, error.message);
+    return "Fundamentals data unavailable.";
+  }
+}
+
+// Generate hype analysis
+async function generateHype({ tokenData, narrativeClaim }) {
+  const startTime = Date.now();
+  console.log(`\n[Hype] ===== Starting hype generation =====`);
+  
+  try {
+    const sentiment = tokenData?.sentimentScore || 50;
+    const volume24h = tokenData?.marketData?.volume24h || null;
+    const priceChange = tokenData?.marketData?.priceChange24h || null;
+    const hasTwitter = !!tokenData?.twitterData;
+    const hasTelegram = !!tokenData?.telegramData;
+    
+    const prompt = `
+What's the vibe around this token? 2-3 sentences.
+
+DATA:
+- Sentiment score: ${sentiment}/100
+- 24h volume: ${volume24h ? `$${(volume24h / 1000).toFixed(0)}K` : "unknown"}
+- Price change (24h): ${priceChange !== null ? `${priceChange > 0 ? "+" : ""}${priceChange.toFixed(2)}%` : "unknown"}
+- Social presence: ${hasTwitter ? "✓ Twitter" : "✗ Twitter"}, ${hasTelegram ? "✓ Telegram" : "✗ Telegram"}
+- Narrative: ${narrativeClaim.substring(0, 100)}...
+
+Is this heating up or cooling down? Is there real momentum or just noise? Be real about the energy.
+
+Tone: Honest and direct. "Community is buzzing" or "Pretty quiet, not much happening" - call it as you see it.
+`;
+
+    console.log(`[Hype] Calling OpenAI...`);
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.8,
+      max_tokens: 150,
+    });
 
     const text = completion.choices[0]?.message?.content?.trim();
-    if (!text) {
-      throw new Error("No response from AI model");
-    }
-    
     const duration = Date.now() - startTime;
-    console.log(`[UserNotes] ✅ Success: ${text.length} chars generated - ${duration}ms\n`);
+    console.log(`[Hype] ✅ Generated in ${duration}ms\n`);
     
-  return text;
+    return text || "No hype data available.";
   } catch (error) {
-    const duration = Date.now() - startTime;
-    console.error(`[UserNotes] ❌ Failed after ${duration}ms:`, error.message);
-    console.error(`[UserNotes] Error details:`, error);
-    throw new Error(`Failed to generate user notes: ${error.message}`);
+    console.error(`[Hype] ❌ Failed:`, error.message);
+    return "Hype analysis unavailable.";
   }
 }
 
@@ -1342,19 +1398,33 @@ export default async function handler(req, res) {
     const classifyDuration = Date.now() - classifyStart;
     console.log(`[Handler] Classification completed in ${classifyDuration}ms`);
 
-    // Generate user notes
-    const notesStart = Date.now();
-    const notesForUser = await generateUserNotes({
-      narrativeClaim: narrative_claim,
-      verdict,
-      reasoning,
-      confidence,
-      redFlags,
-      entities,
-      tokenData,
-    });
-    const notesDuration = Date.now() - notesStart;
-    console.log(`[Handler] User notes generated in ${notesDuration}ms`);
+    // Generate analysis sections in parallel
+    const analysisStart = Date.now();
+    console.log(`[Handler] Generating analysis sections in parallel...`);
+    const [summaryResult, fundamentalsResult, hypeResult] = await Promise.allSettled([
+      generateSummary({ 
+        narrativeClaim: narrative_claim, 
+        verdict, 
+        tokenData,
+        tokenName: tokenData.tokenName 
+      }),
+      generateFundamentals({ 
+        tokenData, 
+        verdict, 
+        reasoning 
+      }),
+      generateHype({ 
+        tokenData, 
+        narrativeClaim: narrative_claim 
+      }),
+    ]);
+    
+    const summary = summaryResult.status === "fulfilled" ? summaryResult.value : "Summary unavailable.";
+    const fundamentals = fundamentalsResult.status === "fulfilled" ? fundamentalsResult.value : "Fundamentals unavailable.";
+    const hype = hypeResult.status === "fulfilled" ? hypeResult.value : "Hype analysis unavailable.";
+    
+    const analysisDuration = Date.now() - analysisStart;
+    console.log(`[Handler] Analysis sections generated in ${analysisDuration}ms`);
 
     // Assemble result
     const result = {
@@ -1383,7 +1453,10 @@ export default async function handler(req, res) {
         articles: webResult?.articles || [],
         tweets: twitterResult?.validationTweets || [],
       },
-      notesForUser,
+      // Analysis sections
+      summary,
+      fundamentalsAnalysis: fundamentals,
+      hypeAnalysis: hype,
     };
 
     // Save to cache (don't wait for it)

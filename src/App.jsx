@@ -115,18 +115,73 @@ function AppContent() {
                 <ScanResult result={result} />
               </div>
             ) : (
-              <div className="visual-grid">
-                <div className="grid-item">
-                  <div className="stat-number">10K+</div>
-                  <div className="stat-label">Tokens Analyzed</div>
+              <div className="scanner-preview">
+                <div className="preview-header">
+                  <div className="preview-title">What We Analyze</div>
+                  <div className="preview-subtitle">Real-time insights from multiple sources</div>
                 </div>
-                <div className="grid-item">
-                  <div className="stat-number">98%</div>
-                  <div className="stat-label">Accuracy Rate</div>
+                
+                <div className="preview-items">
+                  <div className="preview-item">
+                    <div className="preview-icon">💰</div>
+                    <div className="preview-content">
+                      <div className="preview-label">Market Data</div>
+                      <div className="preview-detail">Price, liquidity, volume & trends</div>
+                    </div>
+                    <div className="preview-status">✓</div>
+                  </div>
+
+                  <div className="preview-item">
+                    <div className="preview-icon">🔐</div>
+                    <div className="preview-content">
+                      <div className="preview-label">Security Check</div>
+                      <div className="preview-detail">Mint authority, freeze risks & red flags</div>
+                    </div>
+                    <div className="preview-status">✓</div>
+                  </div>
+
+                  <div className="preview-item">
+                    <div className="preview-icon">📝</div>
+                    <div className="preview-content">
+                      <div className="preview-label">Narrative Analysis</div>
+                      <div className="preview-detail">AI-powered claim verification</div>
+                    </div>
+                    <div className="preview-status">✓</div>
+                  </div>
+
+                  <div className="preview-item">
+                    <div className="preview-icon">🌊</div>
+                    <div className="preview-content">
+                      <div className="preview-label">Hype Meter</div>
+                      <div className="preview-detail">Community sentiment & momentum</div>
+                    </div>
+                    <div className="preview-status">✓</div>
+                  </div>
+
+                  <div className="preview-item">
+                    <div className="preview-icon">👥</div>
+                    <div className="preview-content">
+                      <div className="preview-label">Social Presence</div>
+                      <div className="preview-detail">Twitter, Telegram & website activity</div>
+                    </div>
+                    <div className="preview-status">✓</div>
+                  </div>
+
+                  <div className="preview-item">
+                    <div className="preview-icon">🎯</div>
+                    <div className="preview-content">
+                      <div className="preview-label">Overall Score</div>
+                      <div className="preview-detail">0-100 rating based on all metrics</div>
+                    </div>
+                    <div className="preview-status">✓</div>
+                  </div>
                 </div>
-                <div className="grid-item">
-                  <div className="stat-number">&lt;5s</div>
-                  <div className="stat-label">Scan Time</div>
+
+                <div className="preview-footer">
+                  <div className="preview-badge">
+                    <span className="badge-icon">⚡</span>
+                    <span className="badge-text">Results in ~10 seconds</span>
+                  </div>
                 </div>
               </div>
             )}
