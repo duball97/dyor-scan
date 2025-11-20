@@ -45,13 +45,14 @@ body::before {
 .site-header {
   background: rgba(0, 0, 0, 0.95);
   border-bottom: 1px solid #1a1a1a;
-  padding: 20px 32px;
+  padding: 20px 0;
   position: sticky;
   top: 0;
   z-index: 100;
   backdrop-filter: blur(10px);
   animation: slideDown 0.5s ease-out;
   transition: all 0.3s ease;
+  width: 100%;
 }
 
 @keyframes slideDown {
@@ -66,8 +67,8 @@ body::before {
 }
 
 .site-header-content {
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
+  padding: 0 32px;
   display: flex;
   align-items: center;
   justify-content: space-between;

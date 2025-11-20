@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import ScanForm from "./components/ScanForm.jsx";
 import ScanResult from "./components/ScanResult.jsx";
 import Documentation from "./pages/Documentation.jsx";
@@ -15,11 +15,13 @@ const loadingMessages = [
 
 function AppContent() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [loadingMessage, setLoadingMessage] = useState(loadingMessages[0]);
   const scanSectionRef = useRef(null);
+  const howItWorksRef = useRef(null);
 
   useEffect(() => {
     if (loading) {
@@ -32,8 +34,47 @@ function AppContent() {
     }
   }, [loading]);
 
+  useEffect(() => {
+    // Handle hash navigation when on home page
+    if (location.pathname === '/' && window.location.hash === '#how-it-works') {
+      setTimeout(() => {
+        const element = document.getElementById('how-it-works');
+        element?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+  }, [location]);
+
   const scrollToScan = () => {
     scanSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const scrollToHowItWorks = (e) => {
+    if (e) {
+      e.preventDefault();
+    }
+    
+    const scrollToElement = () => {
+      const element = howItWorksRef.current || document.getElementById('how-it-works');
+      if (element) {
+        const headerOffset = 80; // Account for fixed header
+        const elementPosition = element.getBoundingClientRect().top;
+        const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+        
+        window.scrollTo({
+          top: offsetPosition,
+          behavior: 'smooth'
+        });
+      }
+    };
+    
+    if (location.pathname !== '/') {
+      // Navigate to home first, then scroll after a delay
+      navigate('/');
+      setTimeout(scrollToElement, 500);
+    } else {
+      // Already on home page, scroll immediately
+      scrollToElement();
+    }
   };
 
   const handleScan = async (contractAddress) => {
@@ -67,15 +108,10 @@ function AppContent() {
     <div className="app">
       <header className="site-header">
         <div className="site-header-content">
-          <div className="logo">
-            <img src="/logo.png" alt="DYOR" className="logo-image" />
-            <span className="logo-text">DYOR</span>
-          </div>
-          
           <nav className="site-nav">
             <Link to="/" className={location.pathname === '/' ? 'active' : ''}>Home</Link>
             <Link to="/docs" className={location.pathname === '/docs' ? 'active' : ''}>Documentation</Link>
-            <a href="#how-it-works">How It Works</a>
+            <a href="#how-it-works" onClick={scrollToHowItWorks}>How It Works</a>
           </nav>
 
           <div className="site-header-actions">
@@ -123,57 +159,73 @@ function AppContent() {
                 
                 <div className="preview-items">
                   <div className="preview-item">
-                    <div className="preview-icon">💰</div>
-                    <div className="preview-content">
-                      <div className="preview-label">Market Data</div>
-                      <div className="preview-detail">Price, liquidity, volume & trends</div>
+                    <div className="preview-icon">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                      </svg>
                     </div>
-                    <div className="preview-status">✓</div>
-                  </div>
-
-                  <div className="preview-item">
-                    <div className="preview-icon">🔐</div>
                     <div className="preview-content">
-                      <div className="preview-label">Security Check</div>
-                      <div className="preview-detail">Mint authority, freeze risks & red flags</div>
-                    </div>
-                    <div className="preview-status">✓</div>
-                  </div>
-
-                  <div className="preview-item">
-                    <div className="preview-icon">📝</div>
-                    <div className="preview-content">
-                      <div className="preview-label">Narrative Analysis</div>
+                      <div className="preview-label">Narrative</div>
                       <div className="preview-detail">AI-powered claim verification</div>
                     </div>
-                    <div className="preview-status">✓</div>
                   </div>
 
                   <div className="preview-item">
-                    <div className="preview-icon">🌊</div>
-                    <div className="preview-content">
-                      <div className="preview-label">Hype Meter</div>
-                      <div className="preview-detail">Community sentiment & momentum</div>
+                    <div className="preview-icon">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                      </svg>
                     </div>
-                    <div className="preview-status">✓</div>
-                  </div>
-
-                  <div className="preview-item">
-                    <div className="preview-icon">👥</div>
                     <div className="preview-content">
                       <div className="preview-label">Social Presence</div>
                       <div className="preview-detail">Twitter, Telegram & website activity</div>
                     </div>
-                    <div className="preview-status">✓</div>
                   </div>
 
                   <div className="preview-item">
-                    <div className="preview-icon">🎯</div>
+                    <div className="preview-icon">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                      </svg>
+                    </div>
+                    <div className="preview-content">
+                      <div className="preview-label">Security Check</div>
+                      <div className="preview-detail">Mint authority, freeze risks & red flags</div>
+                    </div>
+                  </div>
+
+                  <div className="preview-item">
+                    <div className="preview-icon">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                        <polyline points="17 6 23 6 23 12"></polyline>
+                      </svg>
+                    </div>
+                    <div className="preview-content">
+                      <div className="preview-label">Hype Meter</div>
+                      <div className="preview-detail">Community sentiment & momentum</div>
+                    </div>
+                  </div>
+
+                  <div className="preview-item">
+                    <div className="preview-icon">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <circle cx="12" cy="12" r="6"></circle>
+                        <circle cx="12" cy="12" r="2"></circle>
+                      </svg>
+                    </div>
                     <div className="preview-content">
                       <div className="preview-label">Overall Score</div>
                       <div className="preview-detail">0-100 rating based on all metrics</div>
                     </div>
-                    <div className="preview-status">✓</div>
                   </div>
                 </div>
 
@@ -233,7 +285,7 @@ function AppContent() {
           </div>
         </section>
 
-        <section className="how-it-works-section">
+        <section id="how-it-works" ref={howItWorksRef} className="how-it-works-section">
           <div className="section-header">
             <h2 className="section-title">How It Works</h2>
             <p className="section-subtitle">From contract address to verified intelligence in seconds</p>
@@ -317,7 +369,7 @@ function AppContent() {
           <div className="app-footer-links">
             <Link to="/">Home</Link>
             <Link to="/docs">Documentation</Link>
-            <a href="#how-it-works">How It Works</a>
+            <a href="#how-it-works" onClick={scrollToHowItWorks}>How It Works</a>
             <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub</a>
           </div>
           <div className="app-footer-text">

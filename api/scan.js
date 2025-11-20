@@ -1132,9 +1132,9 @@ async function generateSummary({ narrativeClaim, verdict, tokenData, tokenName }
     const sentiment = tokenData?.sentimentScore || 50;
     
     const prompt = `
-You're a crypto analyst. Write a punchy 2-3 sentence summary for ${tokenName || "this token"}.
+You're a crypto analyst. Write a concise bullet-point summary for ${tokenName || "this token"}.
 
-What's the vibe? Should people care? Be direct and engaging.
+Format as 3-4 bullet points. Be direct and engaging.
 
 Context:
 - Narrative: ${narrativeClaim}
@@ -1142,7 +1142,7 @@ Context:
 - Score: ${score}/100
 - Sentiment: ${sentiment}/100
 
-Write like a human. Make it interesting. No fluff.
+Use bullet points (• or -). Keep each point short (one line). No fluff.
 `;
 
     console.log(`[Summary] Calling OpenAI...`);
@@ -1150,7 +1150,7 @@ Write like a human. Make it interesting. No fluff.
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.8,
-      max_tokens: 150,
+      max_tokens: 100,
     });
 
     const text = completion.choices[0]?.message?.content?.trim();

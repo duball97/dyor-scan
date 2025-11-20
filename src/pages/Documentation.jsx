@@ -6,10 +6,6 @@ function Documentation() {
     <div className="app">
       <header className="site-header">
         <div className="site-header-content">
-          <Link to="/" className="logo">
-            <span className="logo-text">DYOR</span>
-          </Link>
-          
           <nav className="site-nav">
             <Link to="/" className="">Home</Link>
             <Link to="/docs" className="active">Documentation</Link>
@@ -37,13 +33,13 @@ function Documentation() {
         <section className="docs-section">
           <h2>What is DYOR Scanner?</h2>
           <p>
-            DYOR Scanner is an AI-powered tool that analyzes Solana tokens to extract, verify, and classify their narratives. 
+            DYOR Scanner is an <strong>AI-powered tool</strong> that analyzes <strong>Solana tokens</strong> to extract, verify, and classify their narratives. 
             It helps investors make informed decisions by identifying what stories tokens are telling, whether those stories 
-            reference real-world events, and what risks might be involved.
+            reference <strong>real-world events</strong>, and what <strong>risks</strong> might be involved.
           </p>
           <p>
-            The scanner combines real-time market data, security analysis, and advanced AI to provide comprehensive token 
-            intelligence in seconds.
+            The scanner combines <strong>real-time market data</strong>, <strong>security analysis</strong>, and <strong>advanced AI</strong> to provide comprehensive token 
+            intelligence in <strong>seconds</strong>.
           </p>
         </section>
 
@@ -70,13 +66,13 @@ function Documentation() {
             <div className="step-content-doc">
               <h3>Narrative Extraction</h3>
               <p>
-                Our GPT-4 powered AI analyzes the token's information to identify:
+                Our <strong>GPT-4 powered AI</strong> analyzes the token's information to identify:
               </p>
               <ul>
-                <li>The core narrative claim (what story is this token telling?)</li>
-                <li>Entities involved (companies, products, people, events)</li>
-                <li>Key topics and themes</li>
-                <li>References to real-world events or partnerships</li>
+                <li>The <strong>core narrative claim</strong> (what story is this token telling?)</li>
+                <li><strong>Entities involved</strong> (companies, products, people, events)</li>
+                <li><strong>Key topics and themes</strong></li>
+                <li><strong>References to real-world events or partnerships</strong></li>
               </ul>
             </div>
           </div>
@@ -86,15 +82,15 @@ function Documentation() {
             <div className="step-content-doc">
               <h3>Reality Verification</h3>
               <p>
-                The AI classifies the narrative into one of three categories:
+                The AI classifies the narrative into <strong>one of three categories</strong>:
               </p>
               <ul>
-                <li><strong>CONFIRMED</strong> - References real, verifiable events/products. Entities are real.</li>
-                <li><strong>PARTIAL</strong> - Mix of truth and hype. Real event but exaggerated or unofficial association.</li>
-                <li><strong>UNVERIFIED</strong> - Cannot verify claims. Possibly fabricated or misleading.</li>
+                <li><strong>CONFIRMED</strong> - References <strong>real, verifiable events/products</strong>. Entities are real.</li>
+                <li><strong>PARTIAL</strong> - <strong>Mix of truth and hype</strong>. Real event but exaggerated or unofficial association.</li>
+                <li><strong>UNVERIFIED</strong> - <strong>Cannot verify claims</strong>. Possibly fabricated or misleading.</li>
               </ul>
               <p>
-                Each verdict includes a confidence level (high/medium/low) and detailed reasoning.
+                Each verdict includes a <strong>confidence level (high/medium/low)</strong> and <strong>detailed reasoning</strong>.
               </p>
             </div>
           </div>
@@ -104,13 +100,13 @@ function Documentation() {
             <div className="step-content-doc">
               <h3>Risk Assessment</h3>
               <p>
-                The scanner identifies potential red flags such as:
+                The scanner identifies <strong>potential red flags</strong> such as:
               </p>
               <ul>
-                <li>Unverified partnerships or claims</li>
-                <li>Security vulnerabilities</li>
-                <li>Misleading narratives</li>
-                <li>Lack of official affiliation despite claims</li>
+                <li><strong>Unverified partnerships or claims</strong></li>
+                <li><strong>Security vulnerabilities</strong></li>
+                <li><strong>Misleading narratives</strong></li>
+                <li><strong>Lack of official affiliation</strong> despite claims</li>
               </ul>
             </div>
           </div>
@@ -120,16 +116,16 @@ function Documentation() {
             <div className="step-content-doc">
               <h3>Comprehensive Report</h3>
               <p>
-                You receive a detailed analysis including:
+                You receive a <strong>detailed analysis</strong> including:
               </p>
               <ul>
-                <li>Market data (price, liquidity, volume, 24h change)</li>
-                <li>Social links (website, Twitter, Telegram)</li>
-                <li>Security risks from RugCheck</li>
-                <li>Narrative claim and entities</li>
-                <li>Verdict with confidence level</li>
-                <li>Red flags (if any)</li>
-                <li>Comprehensive notes for investors</li>
+                <li><strong>Market data</strong> (price, liquidity, volume, 24h change)</li>
+                <li><strong>Social links</strong> (website, Twitter, Telegram)</li>
+                <li><strong>Security risks</strong> from RugCheck</li>
+                <li><strong>Narrative claim and entities</strong></li>
+                <li><strong>Verdict with confidence level</strong></li>
+                <li><strong>Red flags</strong> (if any)</li>
+                <li><strong>Comprehensive notes for investors</strong></li>
               </ul>
             </div>
           </div>
@@ -144,9 +140,9 @@ function Documentation() {
               <span className="verdict-badge">Verified</span>
             </div>
             <p>
-              The token's narrative references real, verifiable events, products, or announcements. 
-              The entities mentioned (companies, products, people) are real. However, this does NOT mean 
-              the token is officially affiliated - it may just be referencing real events.
+              The token's narrative references <strong>real, verifiable events, products, or announcements</strong>. 
+              The entities mentioned (companies, products, people) are <strong>real</strong>. However, <strong>this does NOT mean 
+              the token is officially affiliated</strong> - it may just be referencing real events.
             </p>
             <p className="verdict-note">
               <strong>Example:</strong> Token claims to be inspired by JPMorgan's JPM Coin launch. 
@@ -160,9 +156,9 @@ function Documentation() {
               <span className="verdict-badge">Mixed</span>
             </div>
             <p>
-              The narrative mixes truth with hype or exaggeration. There may be a real event or product 
-              being referenced, but the token's claims are stretched, exaggerated, or imply an unofficial 
-              association that doesn't exist.
+              The narrative mixes <strong>truth with hype or exaggeration</strong>. There may be a <strong>real event or product 
+              being referenced</strong>, but the token's claims are <strong>stretched, exaggerated, or imply an unofficial 
+              association that doesn't exist</strong>.
             </p>
             <p className="verdict-note">
               <strong>Example:</strong> Token references a real company's product but implies partnership 
@@ -176,8 +172,8 @@ function Documentation() {
               <span className="verdict-badge">Unclear</span>
             </div>
             <p>
-              The narrative's claims cannot be verified through available information. The entities or events 
-              mentioned may be fabricated, misleading, or too vague to verify. Exercise extreme caution.
+              The narrative's claims <strong>cannot be verified</strong> through available information. The entities or events 
+              mentioned may be <strong>fabricated, misleading, or too vague to verify</strong>. <strong>Exercise extreme caution</strong>.
             </p>
             <p className="verdict-note">
               <strong>Example:</strong> Token claims partnership with a major company, but no evidence 
@@ -193,19 +189,19 @@ function Documentation() {
             <div className="confidence-card">
               <div className="confidence-indicator confidence-high">HIGH</div>
               <h3>High Confidence</h3>
-              <p>Strong evidence supports this verdict. Multiple sources confirm or deny the narrative claims.</p>
+              <p><strong>Strong evidence</strong> supports this verdict. <strong>Multiple sources</strong> confirm or deny the narrative claims.</p>
             </div>
             
             <div className="confidence-card">
               <div className="confidence-indicator confidence-medium">MEDIUM</div>
               <h3>Medium Confidence</h3>
-              <p>Verdict based on available information, but more research is recommended. Some uncertainty remains.</p>
+              <p>Verdict based on <strong>available information</strong>, but <strong>more research is recommended</strong>. Some uncertainty remains.</p>
             </div>
             
             <div className="confidence-card">
               <div className="confidence-indicator confidence-low">LOW</div>
               <h3>Low Confidence</h3>
-              <p>Limited information available. Exercise caution and do thorough independent research before investing.</p>
+              <p><strong>Limited information available</strong>. <strong>Exercise caution</strong> and do <strong>thorough independent research</strong> before investing.</p>
             </div>
           </div>
         </section>
@@ -216,19 +212,19 @@ function Documentation() {
           <div className="source-grid">
             <div className="source-card">
               <h3>DexScreener</h3>
-              <p>Real-time market data including prices, liquidity, volume, and trading pairs across all Solana DEXs.</p>
+              <p><strong>Real-time market data</strong> including prices, liquidity, volume, and trading pairs across all Solana DEXs.</p>
               <a href="https://dexscreener.com" target="_blank" rel="noopener noreferrer">Visit DexScreener →</a>
             </div>
             
             <div className="source-card">
               <h3>RugCheck</h3>
-              <p>Security analysis and risk assessment for Solana tokens. Identifies potential vulnerabilities and scams.</p>
+              <p><strong>Security analysis and risk assessment</strong> for Solana tokens. Identifies <strong>potential vulnerabilities and scams</strong>.</p>
               <a href="https://rugcheck.xyz" target="_blank" rel="noopener noreferrer">Visit RugCheck →</a>
             </div>
             
             <div className="source-card">
               <h3>OpenAI GPT-4</h3>
-              <p>Advanced AI for narrative extraction, entity identification, and classification. Powers the analysis engine.</p>
+              <p><strong>Advanced AI</strong> for narrative extraction, entity identification, and classification. Powers the <strong>analysis engine</strong>.</p>
               <a href="https://openai.com" target="_blank" rel="noopener noreferrer">Visit OpenAI →</a>
             </div>
           </div>
@@ -289,41 +285,41 @@ function Documentation() {
           <div className="faq-item">
             <h3>How accurate are the verdicts?</h3>
             <p>
-              Verdicts are AI-generated based on available data. Accuracy depends on the quality and completeness 
-              of information. Always verify independently. Check the confidence level - high confidence means more 
-              reliable, low confidence means less certain.
+              Verdicts are <strong>AI-generated</strong> based on available data. <strong>Accuracy depends on the quality and completeness 
+              of information</strong>. <strong>Always verify independently</strong>. Check the <strong>confidence level</strong> - <strong>high confidence means more 
+              reliable</strong>, <strong>low confidence means less certain</strong>.
             </p>
           </div>
           
           <div className="faq-item">
             <h3>What does "CONFIRMED" mean?</h3>
             <p>
-              CONFIRMED means the narrative references real events/products. It does NOT mean the token is safe, 
-              legitimate, or officially affiliated. A token can reference real events while still being a scam or 
-              having no value.
+              <strong>CONFIRMED</strong> means the narrative references <strong>real events/products</strong>. <strong>It does NOT mean the token is safe, 
+              legitimate, or officially affiliated</strong>. A token can reference real events while still being <strong>a scam or 
+              having no value</strong>.
             </p>
           </div>
           
           <div className="faq-item">
             <h3>Why does it take a few seconds?</h3>
             <p>
-              The scanner fetches data from multiple APIs (DexScreener, RugCheck), then runs AI analysis. 
-              This typically takes 3-5 seconds. Results are cached for faster subsequent scans.
+              The scanner fetches data from <strong>multiple APIs</strong> (DexScreener, RugCheck), then runs <strong>AI analysis</strong>. 
+              This typically takes <strong>3-5 seconds</strong>. Results are <strong>cached</strong> for faster subsequent scans.
             </p>
           </div>
           
           <div className="faq-item">
             <h3>Can I use this for other blockchains?</h3>
             <p>
-              Currently, DYOR Scanner is optimized for Solana tokens. Support for other chains may be added in the future.
+              Currently, DYOR Scanner is optimized for <strong>Solana tokens</strong>. Support for other chains may be added in the future.
             </p>
           </div>
           
           <div className="faq-item">
             <h3>Is my data stored?</h3>
             <p>
-              Scan results are cached in Supabase to improve performance. Contract addresses and analysis results 
-              are stored, but no personal information is collected.
+              Scan results are <strong>cached in Supabase</strong> to improve performance. <strong>Contract addresses and analysis results 
+              are stored</strong>, but <strong>no personal information is collected</strong>.
             </p>
           </div>
         </section>

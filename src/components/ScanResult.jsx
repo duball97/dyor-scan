@@ -335,7 +335,26 @@ function ScanResult({ result }) {
       {summary && (
         <div className="analysis-section summary-section">
           <h3 className="analysis-section-title">SUMMARY</h3>
-          <p className="analysis-text">{summary}</p>
+          <div className="analysis-text">
+            {summary.split('\n').map((line, idx) => {
+              const trimmed = line.trim();
+              if (!trimmed) return null;
+              // Check if line already has bullet point markers
+              if (trimmed.match(/^[•\-\*]\s/) || trimmed.match(/^[0-9]+\.\s/)) {
+                return (
+                  <div key={idx} style={{ marginBottom: '0.5rem', paddingLeft: '1rem' }}>
+                    {trimmed}
+                  </div>
+                );
+              }
+              // Convert regular lines to bullet points
+              return (
+                <div key={idx} style={{ marginBottom: '0.5rem', paddingLeft: '1rem' }}>
+                  • {trimmed}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
