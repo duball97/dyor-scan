@@ -455,6 +455,91 @@ function calculateTokenScore(tokenData) {
   return Math.max(1, Math.min(100, Math.round(score)));
 }
 
+// Search Nitter for tweets containing a ticker/symbol
+async function searchNitterForTicker(ticker) {
+  const startTime = Date.now();
+  console.log(`[Twitter Search] Starting Nitter search for ticker: ${ticker}`);
+  
+  if (!ticker || ticker === "???") {
+    console.log(`[Twitter Search] No valid ticker provided`);
+    return null;
+  }
+
+  // Nitter search URL - search for tweets containing the ticker
+  const searchUrl = `https://nitter.net/search?f=tweets&q=${encodeURIComponent(ticker)}`;
+  console.log(`[Twitter Search] Searching: ${searchUrl}`);
+
+  try {
+    const response = await fetchWithTimeout(searchUrl, {}, 10000);
+    console.log(`[Twitter Search] Response status: ${response.status}`);
+    
+    if (!response.ok) {
+      console.log(`[Twitter Search] Request failed: ${response.status}`);
+      return null;
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    const tweets = [];
+
+    // Nitter search results are in .timeline-item elements
+    $(".timeline-item").each((i, el) => {
+      if (i >= 3) return; // Only first 3 tweets
+
+      const text = $(el).find(".tweet-content").text().trim();
+      const date = $(el).find("time").attr("datetime");
+      const likes = $(el).find(".likes .icon-container").text().trim();
+      const retweets = $(el).find(".retweets .icon-container").text().trim();
+      
+      // Extract username and tweet ID from the link
+      const tweetLink = $(el).find("a").attr("href");
+      let tweetId = null;
+      let tweetUrl = null;
+      let username = null;
+      
+      if (tweetLink) {
+        // Extract from Nitter link format: /username/status/1234567890
+        const linkMatch = tweetLink.match(/\/([^\/]+)\/status\/(\d+)/);
+        if (linkMatch) {
+          username = linkMatch[1];
+          tweetId = linkMatch[2];
+          tweetUrl = `https://x.com/${username}/status/${tweetId}`;
+        }
+      }
+
+      // Only include tweets that actually mention the ticker
+      if (text && text.toLowerCase().includes(ticker.toLowerCase())) {
+        tweets.push({
+          text,
+          date,
+          likes,
+          retweets,
+          tweetId,
+          tweetUrl,
+          username,
+        });
+      }
+    });
+
+    const result = {
+      tweets,
+      ticker,
+      tweetCount: tweets.length,
+    };
+    
+    const duration = Date.now() - startTime;
+    console.log(`[Twitter Search] ✅ Success: ${tweets.length} tweets found for ${ticker} - ${duration}ms`);
+    
+    return result;
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[Twitter Search] ❌ Failed after ${duration}ms:`, err.message);
+    console.error(`[Twitter Search] Error details:`, err);
+    return null;
+  }
+}
+
 // Fetch Twitter via Nitter (free Twitter scraper)
 async function getTwitterFromNitter(twitterUrl) {
   const startTime = Date.now();
@@ -762,9 +847,12 @@ async function getTokenData(contractAddress) {
     console.log(`[TokenData] Fetching social data...`);
     const socialStart = Date.now();
     
-    const [twitterDataResult, telegramDataResult, websiteDataResult] =
+    const symbol = dex?.symbol || helius?.tokenSymbol || "???";
+    
+    const [twitterDataResult, twitterSearchResult, telegramDataResult, websiteDataResult] =
       await Promise.allSettled([
         socials?.x ? getTwitterFromNitter(socials.x) : Promise.resolve(null),
+        searchNitterForTicker(symbol),
         socials?.telegram
           ? getTelegramFeed(socials.telegram)
           : Promise.resolve(null),
@@ -778,6 +866,10 @@ async function getTokenData(contractAddress) {
       twitterDataResult.status === "fulfilled"
         ? twitterDataResult.value
         : null;
+    const tickerTweets =
+      twitterSearchResult.status === "fulfilled"
+        ? twitterSearchResult.value
+        : null;
     const telegramData =
       telegramDataResult.status === "fulfilled"
         ? telegramDataResult.value
@@ -787,10 +879,13 @@ async function getTokenData(contractAddress) {
         ? websiteDataResult.value
         : null;
 
-    console.log(`[TokenData] Social results: Twitter=${!!twitterData}, Telegram=${!!telegramData}, Website=${!!websiteData}`);
+    console.log(`[TokenData] Social results: Twitter=${!!twitterData}, TickerTweets=${!!tickerTweets}, Telegram=${!!telegramData}, Website=${!!websiteData}`);
     
     if (twitterDataResult.status === "rejected") {
       console.error(`[TokenData] Twitter scrape failed:`, twitterDataResult.reason);
+    }
+    if (twitterSearchResult.status === "rejected") {
+      console.error(`[TokenData] Twitter search failed:`, twitterSearchResult.reason);
     }
     if (telegramDataResult.status === "rejected") {
       console.error(`[TokenData] Telegram scrape failed:`, telegramDataResult.reason);
@@ -834,6 +929,7 @@ Sentiment Score: ${sentimentScore || "N/A"}
       securityData: rug,
       hasMarketData: !!(dex || birdeye),
       twitterData,
+      tickerTweets, // Tweets mentioning the token ticker
       telegramData,
       websiteData,
       tokenScore,
@@ -1562,6 +1658,7 @@ export default async function handler(req, res) {
       sentimentScore: tokenData.sentimentScore,
       tokenScore: tokenData.tokenScore,
       twitterData: tokenData.twitterData,
+      tickerTweets: tokenData.tickerTweets, // Tweets mentioning the token ticker
       telegramData: tokenData.telegramData,
       websiteData: tokenData.websiteData,
       loreTweet: twitterResult?.loreTweet || null,

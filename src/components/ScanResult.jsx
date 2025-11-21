@@ -134,6 +134,7 @@ function ScanResult({ result }) {
     birdeye,
     tokenScore,
     twitterData,
+    tickerTweets,
   } = result;
 
   const [copySuccess, setCopySuccess] = useState(false);
@@ -576,14 +577,52 @@ function ScanResult({ result }) {
         </div>
       )}
 
-      {/* X Posts */}
+      {/* X Posts About Token */}
+      {tickerTweets && tickerTweets.tweets && tickerTweets.tweets.length > 0 && (
+        <div className="result-section">
+          <h3>Recent X Posts About {symbol}</h3>
+          <div className="tweets-list">
+            {tickerTweets.tweets
+              .filter(tweet => tweet.tweetUrl) // Only show tweets with URLs
+              .slice(0, 3)
+              .map((tweet, idx) => (
+                <div key={idx} className="tweet-item">
+                  <div className="tweet-content">
+                    <p className="tweet-text">{tweet.text || "No text available"}</p>
+                    {tweet.date && (
+                      <span className="tweet-date">
+                        {new Date(tweet.date).toLocaleDateString()}
+                      </span>
+                    )}
+                    {(tweet.likes || tweet.retweets) && (
+                      <div className="tweet-stats">
+                        {tweet.likes && <span>❤️ {tweet.likes}</span>}
+                        {tweet.retweets && <span>🔄 {tweet.retweets}</span>}
+                      </div>
+                    )}
+                  </div>
+                  <a 
+                    href={tweet.tweetUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="tweet-link"
+                  >
+                    View on X →
+                  </a>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* X Posts from Token Profile */}
       {twitterData && twitterData.tweets && twitterData.tweets.length > 0 && (
         <div className="result-section">
-          <h3>Recent X Posts</h3>
+          <h3>Recent X Posts from Profile</h3>
           <div className="tweets-list">
             {twitterData.tweets
               .filter(tweet => tweet.tweetUrl) // Only show tweets with URLs
-              .slice(0, 5)
+              .slice(0, 3)
               .map((tweet, idx) => (
                 <div key={idx} className="tweet-item">
                   <div className="tweet-content">

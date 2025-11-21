@@ -702,13 +702,16 @@ body::before {
 }
 
 .api-content {
-  max-width: 900px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
   margin: 64px auto 0;
-  text-align: center;
+  align-items: start;
+  max-width: 1200px;
 }
 
 .api-description {
-  margin-bottom: 48px;
+  text-align: left;
 }
 
 .api-description p {
@@ -742,7 +745,7 @@ body::before {
 }
 
 .api-example {
-  margin: 48px 0;
+  text-align: left;
   padding: 32px;
   background: linear-gradient(135deg, #0a0a0a 0%, #0f0f0f 100%);
   border: 1px solid #2a2a2a;
@@ -789,28 +792,30 @@ body::before {
 }
 
 .steps-container {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 0;
+  display: flex;
+  justify-content: center;
   align-items: center;
+  gap: 24px;
   margin-top: 64px;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  flex-wrap: nowrap;
 }
 
 .step {
-  grid-column: span 1;
+  flex: 1;
   text-align: center;
   position: relative;
-}
-
-.step:nth-child(odd) {
-  grid-column: span 2;
+  min-width: 0;
 }
 
 .step-connector {
-  grid-column: span 1;
+  flex: 0 0 40px;
   height: 2px;
   background: linear-gradient(90deg, #404040 0%, #606060 50%, #404040 100%);
   position: relative;
+  align-self: center;
 }
 
 .step-connector::after {
@@ -2819,13 +2824,13 @@ body::before {
   }
 
   .steps-container {
-    grid-template-columns: 1fr;
+    flex-direction: column;
     gap: 32px;
     text-align: center;
   }
 
   .step {
-    grid-column: span 1 !important;
+    flex: 1 1 auto;
     text-align: center;
   }
 
@@ -2987,6 +2992,11 @@ body::before {
   .cta-section {
     padding: 60px 20px;
     text-align: center;
+  }
+
+  .api-content {
+    grid-template-columns: 1fr;
+    gap: 48px;
   }
 
   .scan-container {
@@ -3350,6 +3360,11 @@ body::before {
   .scan-section,
   .cta-section {
     padding: 40px 16px;
+  }
+
+  .api-content {
+    grid-template-columns: 1fr;
+    gap: 32px;
   }
 
   .scan-container {

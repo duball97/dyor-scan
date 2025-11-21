@@ -114,11 +114,11 @@ function AppContent() {
             <Link to="/" className={location.pathname === '/' ? 'active' : ''}>Home</Link>
             <Link to="/docs" className={location.pathname === '/docs' ? 'active' : ''}>Documentation</Link>
             <a href="#how-it-works" onClick={scrollToHowItWorks}>How It Works</a>
-            <Link to="/api-keys" className={location.pathname === '/api-keys' ? 'active' : ''}>API Keys</Link>
+            <Link to="/api-keys" className={location.pathname === '/api-keys' ? 'active' : ''}>API</Link>
           </nav>
 
           <div className="site-header-actions">
-            <a href="https://x.com" target="_blank" rel="noopener noreferrer" className="social-link">
+            <a href="https://x.com/dyorscan" target="_blank" rel="noopener noreferrer" className="social-link">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
               </svg>
@@ -251,37 +251,31 @@ function AppContent() {
           
           <div className="features-grid">
             <div className="feature-card">
-              <div className="feature-icon">📊</div>
               <h3>Market Data</h3>
               <p>Real-time price, liquidity, and volume from DexScreener. Track 24h changes and trading metrics across all Solana DEXs.</p>
             </div>
             
             <div className="feature-card">
-              <div className="feature-icon">🔍</div>
               <h3>Narrative Extraction</h3>
               <p>AI analyzes token descriptions to extract core claims, identify key entities, and understand the project's story.</p>
             </div>
             
             <div className="feature-card">
-              <div className="feature-icon">🛡️</div>
               <h3>Security Analysis</h3>
               <p>Automated risk assessment from RugCheck. Detect potential vulnerabilities and security concerns before investing.</p>
             </div>
             
             <div className="feature-card">
-              <div className="feature-icon">🤖</div>
               <h3>AI Verification</h3>
               <p>GPT-4 powered classification system that evaluates narratives as CONFIRMED, PARTIAL, or UNVERIFIED with detailed reasoning.</p>
             </div>
             
             <div className="feature-card">
-              <div className="feature-icon">🌐</div>
               <h3>Social Tracking</h3>
               <p>Aggregate social links including websites, Twitter, and Telegram. Monitor community presence and engagement.</p>
             </div>
             
             <div className="feature-card">
-              <div className="feature-icon">⚡</div>
               <h3>Instant Results</h3>
               <p>Sub-5 second analysis with cached results. Get comprehensive insights without waiting for slow data aggregation.</p>
             </div>
@@ -308,8 +302,8 @@ function AppContent() {
             <div className="step">
               <div className="step-number">02</div>
               <div className="step-content">
-                <h3>Data Aggregation</h3>
-                <p>Fetch market data, security scores, and social profiles from multiple sources</p>
+                <h3>AI-Powered Analysis</h3>
+                <p>Aggregate data from multiple sources and extract narrative claims with AI verification</p>
               </div>
             </div>
             
@@ -317,16 +311,6 @@ function AppContent() {
             
             <div className="step">
               <div className="step-number">03</div>
-              <div className="step-content">
-                <h3>AI Analysis</h3>
-                <p>Extract narrative claims, identify entities, and classify credibility</p>
-              </div>
-            </div>
-            
-            <div className="step-connector"></div>
-            
-            <div className="step">
-              <div className="step-number">04</div>
               <div className="step-content">
                 <h3>Verified Report</h3>
                 <p>Receive comprehensive analysis with actionable insights</p>
@@ -347,18 +331,21 @@ function AppContent() {
                 Build token analysis into your application with our simple REST API. 
                 No setup required - just make HTTP requests and get comprehensive token intelligence.
               </p>
-              <ul style={{ textAlign: 'left', maxWidth: '600px', margin: '20px auto' }}>
+              <ul>
                 <li>Simple REST API - works with any programming language</li>
                 <li>No database setup required on your end</li>
                 <li>Real-time token analysis with AI-powered verification</li>
                 <li>Rate limits based on your tier</li>
                 <li>Comprehensive documentation and examples</li>
               </ul>
+              <Link to="/api-keys" className="btn-cta" style={{ display: 'inline-block', marginTop: '20px' }}>
+                Get Your API Key
+              </Link>
             </div>
             
             <div className="api-example">
               <h3>Quick Example</h3>
-              <pre className="code-block" style={{ textAlign: 'left', maxWidth: '700px', margin: '0 auto' }}>{`fetch('https://your-domain.com/api/scan', {
+              <pre className="code-block">{`fetch('https://your-domain.com/api/scan', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',

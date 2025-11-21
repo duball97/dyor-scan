@@ -43,18 +43,12 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!Object.keys(tiers).includes(tier)) {
+    // Only allow free tier for now
+    if (tier !== 'free') {
       return res.status(400).json({
         error: "Invalid tier",
-        message: `Tier must be one of: ${Object.keys(tiers).join(', ')}`,
+        message: "Only free tier is currently available. Other tiers coming soon.",
       });
-    }
-
-    // For starter/pro/enterprise, you might want to require approval
-    // For now, we'll allow free and starter automatically
-    if (tier === 'pro' || tier === 'enterprise') {
-      // You could add approval logic here
-      // For now, we'll still generate the key but you might want to set is_active to false
     }
 
     // Generate API key
@@ -71,7 +65,7 @@ export default async function handler(req, res) {
         tier: tier,
         rate_limit_per_minute: rateLimits.perMinute,
         rate_limit_per_day: rateLimits.perDay,
-        is_active: tier === 'pro' || tier === 'enterprise' ? false : true, // Require approval for higher tiers
+        is_active: true, // Free tier is always active
       })
       .select()
       .single();
@@ -81,15 +75,6 @@ export default async function handler(req, res) {
       return res.status(500).json({
         error: "Internal server error",
         message: "Failed to create API key",
-      });
-    }
-
-    // If tier requires approval, don't return the key yet
-    if (tier === 'pro' || tier === 'enterprise') {
-      return res.status(200).json({
-        success: true,
-        message: "API key request submitted. You will receive an email once it's approved.",
-        requiresApproval: true,
       });
     }
 

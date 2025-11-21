@@ -5,7 +5,7 @@ function ApiKeys() {
   const [apiKey, setApiKey] = useState("");
   const [keyName, setKeyName] = useState("");
   const [userEmail, setUserEmail] = useState("");
-  const [tier, setTier] = useState("free");
+  const [tier] = useState("free"); // Only free tier available for now
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -53,11 +53,11 @@ function ApiKeys() {
             <Link to="/" className="">Home</Link>
             <Link to="/docs" className="">Documentation</Link>
             <a href="/#how-it-works" onClick={(e) => { e.preventDefault(); window.location.href = '/#how-it-works'; }}>How It Works</a>
-            <Link to="/api-keys" className="active">API Keys</Link>
+            <Link to="/api-keys" className="active">API</Link>
           </nav>
 
           <div className="site-header-actions">
-            <a href="https://x.com" target="_blank" rel="noopener noreferrer" className="social-link">
+            <a href="https://x.com/dyorscan" target="_blank" rel="noopener noreferrer" className="social-link">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
               </svg>
@@ -206,28 +206,20 @@ function ApiKeys() {
                 <label htmlFor="tier" style={{ display: "block", marginBottom: "10px", fontWeight: 500, color: "#c0c0c0" }}>
                   Tier
                 </label>
-                <select
-                  id="tier"
-                  value={tier}
-                  onChange={(e) => setTier(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "14px",
-                    background: "#0a0a0a",
-                    border: "1px solid #2a2a2a",
-                    borderRadius: "6px",
-                    color: "#e0e0e0",
-                    fontSize: "14px",
-                    boxSizing: "border-box"
-                  }}
-                >
-                  <option value="free">Free - 10/min, 100/day</option>
-                  <option value="starter">Starter - 30/min, 1,000/day</option>
-                  <option value="pro">Pro - 100/min, 10,000/day</option>
-                  <option value="enterprise">Enterprise - Custom limits</option>
-                </select>
+                <div style={{
+                  width: "100%",
+                  padding: "14px",
+                  background: "#0a0a0a",
+                  border: "1px solid #2a2a2a",
+                  borderRadius: "6px",
+                  color: "#e0e0e0",
+                  fontSize: "14px",
+                  boxSizing: "border-box"
+                }}>
+                  Free - 10 requests/minute, 100 requests/day
+                </div>
                 <p style={{ marginTop: "8px", fontSize: "12px", color: "#606060" }}>
-                  Note: Starter, Pro, and Enterprise tiers may require approval
+                  Free tier is currently the only available option
                 </p>
               </div>
 
@@ -276,28 +268,10 @@ function ApiKeys() {
                 <p><strong>100 requests/day</strong></p>
                 <p>Perfect for testing and low-volume applications</p>
               </div>
-              
-              <div className="source-card">
-                <h3>Starter</h3>
-                <p><strong>30 requests/minute</strong></p>
-                <p><strong>1,000 requests/day</strong></p>
-                <p>For small to medium applications</p>
-              </div>
-              
-              <div className="source-card">
-                <h3>Pro</h3>
-                <p><strong>100 requests/minute</strong></p>
-                <p><strong>10,000 requests/day</strong></p>
-                <p>For production applications with higher volume</p>
-              </div>
-              
-              <div className="source-card">
-                <h3>Enterprise</h3>
-                <p><strong>Custom limits</strong></p>
-                <p><strong>Custom pricing</strong></p>
-                <p>Contact us for custom solutions</p>
-              </div>
             </div>
+            <p style={{ marginTop: "24px", color: "#909090", fontSize: "14px" }}>
+              Additional tiers (Starter, Pro, Enterprise) will be available soon. Contact us at <a href="mailto:api@dyorscanner.com" style={{ color: "#c0c0c0", textDecoration: "underline" }}>api@dyorscanner.com</a> for custom solutions.
+            </p>
           </section>
 
           <section className="docs-section">
