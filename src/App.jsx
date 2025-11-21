@@ -361,15 +361,6 @@ function AppContent() {
   console.log('Score:', data.tokenScore);
 });`}</pre>
             </div>
-            
-            <div className="api-cta">
-              <Link to="/api-keys" className="btn-cta" style={{ display: 'inline-block', marginTop: '20px' }}>
-                Get Your API Key
-              </Link>
-              <Link to="/docs" className="btn-secondary" style={{ display: 'inline-block', marginTop: '20px', marginLeft: '15px' }}>
-                View Documentation
-              </Link>
-            </div>
           </div>
         </section>
 

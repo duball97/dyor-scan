@@ -458,172 +458,266 @@ function calculateTokenScore(tokenData) {
 // Search Nitter for tweets containing a ticker/symbol
 async function searchNitterForTicker(ticker) {
   const startTime = Date.now();
-  console.log(`[Twitter Search] Starting Nitter search for ticker: ${ticker}`);
+  console.log(`[Twitter Search] Starting Twitter search for ticker: ${ticker}`);
   
   if (!ticker || ticker === "???") {
     console.log(`[Twitter Search] No valid ticker provided`);
     return null;
   }
 
-  // Nitter search URL - search for tweets containing the ticker
-  const searchUrl = `https://nitter.net/search?f=tweets&q=${encodeURIComponent(ticker)}`;
-  console.log(`[Twitter Search] Searching: ${searchUrl}`);
+  // For ticker search, we'll try multiple Nitter mirrors with proper error detection
+  const nitterMirrors = [
+    'https://nitter.privacydev.net',
+    'https://nitter.net',
+    'https://nitter.poast.org',
+  ];
 
-  try {
-    const response = await fetchWithTimeout(searchUrl, {}, 10000);
-    console.log(`[Twitter Search] Response status: ${response.status}`);
-    
-    if (!response.ok) {
-      console.log(`[Twitter Search] Request failed: ${response.status}`);
-      return null;
-    }
+  for (const mirror of nitterMirrors) {
+    try {
+      // Search for tweets containing the ticker symbol (with $)
+      const searchQuery = `$${ticker}`;
+      const searchUrl = `${mirror}/search?f=tweets&q=${encodeURIComponent(searchQuery)}`;
+      console.log(`[Twitter Search] Trying mirror: ${searchUrl}`);
 
-    const html = await response.text();
-    const $ = cheerio.load(html);
-
-    const tweets = [];
-
-    // Nitter search results are in .timeline-item elements
-    $(".timeline-item").each((i, el) => {
-      if (i >= 3) return; // Only first 3 tweets
-
-      const text = $(el).find(".tweet-content").text().trim();
-      const date = $(el).find("time").attr("datetime");
-      const likes = $(el).find(".likes .icon-container").text().trim();
-      const retweets = $(el).find(".retweets .icon-container").text().trim();
-      
-      // Extract username and tweet ID from the link
-      const tweetLink = $(el).find("a").attr("href");
-      let tweetId = null;
-      let tweetUrl = null;
-      let username = null;
-      
-      if (tweetLink) {
-        // Extract from Nitter link format: /username/status/1234567890
-        const linkMatch = tweetLink.match(/\/([^\/]+)\/status\/(\d+)/);
-        if (linkMatch) {
-          username = linkMatch[1];
-          tweetId = linkMatch[2];
-          tweetUrl = `https://x.com/${username}/status/${tweetId}`;
+      const response = await fetchWithTimeout(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
+      }, 8000);
+      
+      console.log(`[Twitter Search] Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        console.log(`[Twitter Search] Mirror ${mirror} failed with status ${response.status}`);
+        continue;
       }
 
-      // Only include tweets that actually mention the ticker
-      if (text && text.toLowerCase().includes(ticker.toLowerCase())) {
-        tweets.push({
-          text,
-          date,
-          likes,
-          retweets,
-          tweetId,
-          tweetUrl,
-          username,
-        });
-      }
-    });
+      const html = await response.text();
 
-    const result = {
-      tweets,
-      ticker,
-      tweetCount: tweets.length,
-    };
-    
-    const duration = Date.now() - startTime;
-    console.log(`[Twitter Search] ✅ Success: ${tweets.length} tweets found for ${ticker} - ${duration}ms`);
-    
-    return result;
-  } catch (err) {
-    const duration = Date.now() - startTime;
-    console.error(`[Twitter Search] ❌ Failed after ${duration}ms:`, err.message);
-    console.error(`[Twitter Search] Error details:`, err);
-    return null;
+      // Detect if Nitter actually returned content
+      if (!html.includes('timeline-item') && !html.includes('tweet-content')) {
+        console.log(`[Twitter Search] Mirror ${mirror} returned no tweets`);
+        continue;
+      }
+
+      // Detect rate limiting
+      if (html.includes('rate limit') || html.includes('Too many requests')) {
+        console.log(`[Twitter Search] Mirror ${mirror} is rate limited`);
+        continue;
+      }
+
+      const $ = cheerio.load(html);
+      const tweets = [];
+
+      $(".timeline-item").each((i, el) => {
+        if (i >= 3) return; // Only first 3 tweets
+
+        const text = $(el).find(".tweet-content").text().trim();
+        const date = $(el).find("time").attr("datetime");
+        const likes = $(el).find(".icon-heart").parent().text().trim() || '0';
+        const retweets = $(el).find(".icon-retweet").parent().text().trim() || '0';
+        
+        const tweetLink = $(el).find("a.tweet-link").attr("href");
+        let tweetId = null;
+        let tweetUrl = null;
+        let username = null;
+        
+        if (tweetLink) {
+          const linkMatch = tweetLink.match(/\/([^\/]+)\/status\/(\d+)/);
+          if (linkMatch) {
+            username = linkMatch[1];
+            tweetId = linkMatch[2];
+            tweetUrl = `https://x.com/${username}/status/${tweetId}`;
+          }
+        }
+
+        // Only include tweets that actually mention the ticker
+        if (text && (text.includes(`$${ticker}`) || text.toLowerCase().includes(ticker.toLowerCase()))) {
+          tweets.push({
+            text,
+            date,
+            likes,
+            retweets,
+            tweetId,
+            tweetUrl,
+            username,
+          });
+        }
+      });
+
+      if (tweets.length > 0) {
+        const result = {
+          tweets,
+          ticker,
+          tweetCount: tweets.length,
+        };
+        
+        const duration = Date.now() - startTime;
+        console.log(`[Twitter Search] ✅ Success via ${mirror}: ${tweets.length} ticker tweets found - ${duration}ms`);
+        return result;
+      } else {
+        console.log(`[Twitter Search] Mirror ${mirror} returned 0 relevant tweets`);
+      }
+    } catch (mirrorErr) {
+      console.log(`[Twitter Search] Mirror error: ${mirrorErr.message}`);
+      continue;
+    }
   }
+
+  const duration = Date.now() - startTime;
+  console.log(`[Twitter Search] ❌ All mirrors failed or returned no tweets after ${duration}ms`);
+  
+  // Return empty result instead of null so the scan doesn't fail
+  return {
+    tweets: [],
+    ticker,
+    tweetCount: 0,
+  };
 }
 
 // Fetch Twitter via Nitter (free Twitter scraper)
 async function getTwitterFromNitter(twitterUrl) {
   const startTime = Date.now();
-  console.log(`[Twitter] Starting Nitter scrape for: ${twitterUrl}`);
+  console.log(`[Twitter] Starting Twitter scrape for: ${twitterUrl}`);
   
   if (!twitterUrl) {
     console.log(`[Twitter] No Twitter URL provided`);
     return null;
   }
 
-  // Convert https://twitter.com/... → https://nitter.net/...
-  const nitterUrl = twitterUrl
-    .replace("https://twitter.com", "https://nitter.net")
-    .replace("http://twitter.com", "https://nitter.net")
-    .replace("https://x.com", "https://nitter.net")
-    .replace("http://x.com", "https://nitter.net");
+  // Extract username from Twitter URL
+  const usernameMatch = twitterUrl.match(/(?:twitter\.com|x\.com)\/([^\/\?]+)/);
+  const username = usernameMatch ? usernameMatch[1] : null;
 
-  console.log(`[Twitter] Converted to Nitter URL: ${nitterUrl}`);
-
-  try {
-    const response = await fetchWithTimeout(nitterUrl, {}, 8000);
-    console.log(`[Twitter] Response status: ${response.status}`);
-    
-    if (!response.ok) {
-      console.log(`[Twitter] Request failed: ${response.status}`);
-      return null;
-    }
-
-    const html = await response.text();
-    const $ = cheerio.load(html);
-
-    const tweets = [];
-    // Extract username from Twitter URL
-    const usernameMatch = twitterUrl.match(/(?:twitter\.com|x\.com)\/([^\/\?]+)/);
-    const username = usernameMatch ? usernameMatch[1] : null;
-
-    $(".timeline-item").each((i, el) => {
-      if (i >= 5) return; // Only first 5 tweets
-
-      const text = $(el).find(".tweet-content").text().trim();
-      const date = $(el).find("time").attr("datetime");
-      const likes = $(el).find(".likes .icon-container").text().trim();
-      const retweets = $(el).find(".retweets .icon-container").text().trim();
-      
-      // Try to extract tweet ID from the link
-      const tweetLink = $(el).find("a").attr("href");
-      let tweetId = null;
-      let tweetUrl = null;
-      
-      if (tweetLink) {
-        // Extract tweet ID from Nitter link format: /username/status/1234567890
-        const idMatch = tweetLink.match(/\/status\/(\d+)/);
-        if (idMatch && username) {
-          tweetId = idMatch[1];
-          tweetUrl = `https://x.com/${username}/status/${tweetId}`;
-        }
-      }
-
-      tweets.push({
-        text,
-        date,
-        likes,
-        retweets,
-        tweetId,
-        tweetUrl,
-      });
-    });
-
-    const result = {
-      tweets,
-      topTweet: tweets[0] || null,
-      tweetCount: tweets.length,
-    };
-    
-    const duration = Date.now() - startTime;
-    console.log(`[Twitter] ✅ Success: ${tweets.length} tweets scraped - ${duration}ms`);
-    
-    return result;
-  } catch (err) {
-    const duration = Date.now() - startTime;
-    console.error(`[Twitter] ❌ Failed after ${duration}ms:`, err.message);
-    console.error(`[Twitter] Error details:`, err);
+  if (!username) {
+    console.log(`[Twitter] Could not extract username from URL`);
     return null;
   }
+
+  console.log(`[Twitter] Extracted username: ${username}`);
+
+  // Try method 1: fxtwitter API (most reliable)
+  try {
+    const apiUrl = `https://api.fxtwitter.com/${username}`;
+    console.log(`[Twitter] Attempting fxtwitter API: ${apiUrl}`);
+    
+    const response = await fetchWithTimeout(apiUrl, {}, 8000);
+    console.log(`[Twitter] fxtwitter Response status: ${response.status}`);
+    
+    if (response.ok) {
+      const data = await response.json();
+      
+      if (data && data.tweets && data.tweets.length > 0) {
+        const tweets = data.tweets.slice(0, 5).map(tweet => ({
+          text: tweet.text || '',
+          date: tweet.created_at || tweet.created_timestamp || null,
+          likes: tweet.likes || tweet.favorites || '0',
+          retweets: tweet.retweets || '0',
+          tweetId: tweet.id || null,
+          tweetUrl: tweet.url || (tweet.id ? `https://x.com/${username}/status/${tweet.id}` : null),
+        }));
+
+        const result = {
+          tweets,
+          topTweet: tweets[0] || null,
+          tweetCount: tweets.length,
+        };
+        
+        const duration = Date.now() - startTime;
+        console.log(`[Twitter] ✅ Success via fxtwitter: ${tweets.length} tweets - ${duration}ms`);
+        return result;
+      }
+    }
+  } catch (fxErr) {
+    console.log(`[Twitter] fxtwitter failed: ${fxErr.message}`);
+  }
+
+  // Try method 2: Nitter as fallback with proper error detection
+  try {
+    const nitterMirrors = [
+      'https://nitter.privacydev.net',
+      'https://nitter.net',
+      'https://nitter.poast.org',
+    ];
+
+    for (const mirror of nitterMirrors) {
+      try {
+        const nitterUrl = `${mirror}/${username}`;
+        console.log(`[Twitter] Trying Nitter mirror: ${nitterUrl}`);
+        
+        const response = await fetchWithTimeout(nitterUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        }, 6000);
+        
+        if (!response.ok) continue;
+
+        const html = await response.text();
+        
+        // Detect if Nitter actually returned content
+        if (!html.includes('timeline-item') && !html.includes('tweet-content')) {
+          console.log(`[Twitter] Nitter ${mirror} returned no tweets`);
+          continue;
+        }
+
+        // Detect rate limiting or errors
+        if (html.includes('rate limit') || html.includes('Too many requests')) {
+          console.log(`[Twitter] Nitter ${mirror} is rate limited`);
+          continue;
+        }
+
+        const $ = cheerio.load(html);
+        const tweets = [];
+
+        $(".timeline-item").each((i, el) => {
+          if (i >= 5) return;
+
+          const text = $(el).find(".tweet-content").text().trim();
+          const date = $(el).find("time").attr("datetime");
+          const likes = $(el).find(".icon-heart").parent().text().trim() || '0';
+          const retweets = $(el).find(".icon-retweet").parent().text().trim() || '0';
+          
+          const tweetLink = $(el).find("a.tweet-link").attr("href");
+          let tweetId = null;
+          let tweetUrl = null;
+          
+          if (tweetLink) {
+            const idMatch = tweetLink.match(/\/status\/(\d+)/);
+            if (idMatch) {
+              tweetId = idMatch[1];
+              tweetUrl = `https://x.com/${username}/status/${tweetId}`;
+            }
+          }
+
+          if (text) {
+            tweets.push({ text, date, likes, retweets, tweetId, tweetUrl });
+          }
+        });
+
+        if (tweets.length > 0) {
+          const result = {
+            tweets,
+            topTweet: tweets[0] || null,
+            tweetCount: tweets.length,
+          };
+          
+          const duration = Date.now() - startTime;
+          console.log(`[Twitter] ✅ Success via Nitter: ${tweets.length} tweets - ${duration}ms`);
+          return result;
+        }
+      } catch (mirrorErr) {
+        console.log(`[Twitter] Mirror ${mirror} failed: ${mirrorErr.message}`);
+        continue;
+      }
+    }
+  } catch (nitterErr) {
+    console.log(`[Twitter] All Nitter attempts failed: ${nitterErr.message}`);
+  }
+
+  const duration = Date.now() - startTime;
+  console.error(`[Twitter] ❌ All methods failed after ${duration}ms`);
+  return null;
 }
 
 // Fetch Telegram via public t.me/s/{channel}
@@ -693,39 +787,123 @@ async function scrapeWebsite(websiteUrl) {
     return null;
   }
 
-  const proxied = `https://corsproxy.io/?${encodeURIComponent(websiteUrl)}`;
-  console.log(`[Website] Proxied URL: ${proxied.substring(0, 60)}...`);
-
+  // Method 1: Try allorigins proxy (more reliable than corsproxy)
   try {
-    const response = await fetchWithTimeout(proxied, {}, 8000);
+    const proxied = `https://api.allorigins.win/raw?url=${encodeURIComponent(websiteUrl)}`;
+    console.log(`[Website] Trying allorigins proxy...`);
+
+    const response = await fetchWithTimeout(proxied, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    }, 10000);
+    
     console.log(`[Website] Response status: ${response.status}`);
     
     if (!response.ok) {
-      console.log(`[Website] Request failed: ${response.status}`);
-      return null;
+      throw new Error(`Response not OK: ${response.status}`);
     }
 
     const html = await response.text();
+
+    // Detect Cloudflare protection
+    if (html.includes('Just a moment') || 
+        html.includes('cf-browser-verification') || 
+        html.includes('Checking your browser')) {
+      console.log(`[Website] Cloudflare protection detected, trying direct fetch...`);
+      throw new Error('Cloudflare protected');
+    }
+
+    // Detect empty or error responses
+    if (html.length < 100) {
+      console.log(`[Website] Response too short (${html.length} chars), likely empty`);
+      throw new Error('Empty response from proxy');
+    }
+
     const $ = cheerio.load(html);
 
-    const title = $("title").text();
-    const metaDesc = $('meta[name="description"]').attr("content");
+    const title = $("title").text().trim();
+    const metaDesc = $('meta[name="description"]').attr("content") || 
+                     $('meta[property="og:description"]').attr("content") || '';
     const text = $("body").text().replace(/\s+/g, " ").trim();
+
+    // Validate we got actual content
+    if (!title && text.length < 100) {
+      console.log(`[Website] No meaningful content extracted`);
+      throw new Error('No content extracted');
+    }
 
     const result = {
       title,
       metaDesc,
-      shortText: text.slice(0, 1500), // avoid huge payloads
+      shortText: text.slice(0, 1500),
     };
     
     const duration = Date.now() - startTime;
-    console.log(`[Website] ✅ Success: Title="${title.substring(0, 50)}...", ${text.length} chars - ${duration}ms`);
+    console.log(`[Website] ✅ Success via allorigins: Title="${title.substring(0, 50)}...", ${text.length} chars - ${duration}ms`);
     
     return result;
-  } catch (err) {
+  } catch (proxyErr) {
+    console.log(`[Website] Proxy method failed: ${proxyErr.message}`);
+  }
+
+  // Method 2: Direct fetch with proper headers (bypasses most Cloudflare)
+  try {
+    console.log(`[Website] Attempting direct fetch with browser headers...`);
+    
+    const response = await fetchWithTimeout(websiteUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+      }
+    }, 8000);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const html = await response.text();
+
+    // Same validation checks
+    if (html.includes('Just a moment') || 
+        html.includes('cf-browser-verification') ||
+        html.length < 100) {
+      throw new Error('Cloudflare or empty response');
+    }
+
+    const $ = cheerio.load(html);
+
+    const title = $("title").text().trim();
+    const metaDesc = $('meta[name="description"]').attr("content") || 
+                     $('meta[property="og:description"]').attr("content") || '';
+    const text = $("body").text().replace(/\s+/g, " ").trim();
+
+    if (!title && text.length < 100) {
+      throw new Error('No content extracted');
+    }
+
+    const result = {
+      title,
+      metaDesc,
+      shortText: text.slice(0, 1500),
+    };
+    
     const duration = Date.now() - startTime;
-    console.error(`[Website] ❌ Failed after ${duration}ms:`, err.message);
-    console.error(`[Website] Error details:`, err);
+    console.log(`[Website] ✅ Success via direct fetch: Title="${title.substring(0, 50)}...", ${text.length} chars - ${duration}ms`);
+    
+    return result;
+  } catch (directErr) {
+    const duration = Date.now() - startTime;
+    console.error(`[Website] ❌ All methods failed after ${duration}ms`);
+    console.error(`[Website] Final error:`, directErr.message);
     return null;
   }
 }

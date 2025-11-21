@@ -11,6 +11,7 @@ function Documentation() {
             <Link to="/" className="">Home</Link>
             <Link to="/docs" className="active">Documentation</Link>
             <a href="/#how-it-works">How It Works</a>
+            <Link to="/api-keys">API</Link>
           </nav>
 
           <div className="site-header-actions">
@@ -232,10 +233,38 @@ function Documentation() {
         </section>
 
         <section className="docs-section">
-          <h2>API & Technical Details</h2>
+          <h2>API Access</h2>
+          <p>
+            Integrate DYOR Scanner into your platform with our <strong>REST API</strong>. 
+            Build token analysis into your application with <strong>simple HTTP requests</strong>.
+          </p>
           
+          <div className="api-info-box">
+            <h3>Getting Started</h3>
+            <p>
+              To use the API, you'll need an <strong>API key</strong>. Get your free API key from the 
+              <Link to="/api-keys" style={{ color: '#c0c0c0', textDecoration: 'underline', marginLeft: '5px' }}>API Keys page</Link>.
+            </p>
+            <ul>
+              <li><strong>Simple REST API</strong> - works with any programming language</li>
+              <li><strong>No database setup required</strong> on your end</li>
+              <li><strong>Real-time token analysis</strong> with AI-powered verification</li>
+              <li><strong>Rate limits</strong> based on your tier (Free: 10/min, 100/day)</li>
+              <li><strong>Comprehensive documentation</strong> and examples</li>
+            </ul>
+          </div>
+
           <h3>Endpoint</h3>
           <pre className="code-block">POST /api/scan</pre>
+          
+          <h3>Authentication</h3>
+          <p>
+            Include your API key in the <strong>Authorization header</strong>:
+          </p>
+          <pre className="code-block">{`Authorization: Bearer YOUR_API_KEY`}</pre>
+          <p style={{ fontSize: '14px', color: '#909090', marginTop: '8px' }}>
+            Note: API key is optional for testing, but required for production use and higher rate limits.
+          </p>
           
           <h3>Request Body</h3>
           <pre className="code-block">{`{
@@ -243,7 +272,25 @@ function Documentation() {
   "forceRefresh": boolean (optional, default: false)
 }`}</pre>
           
-          <h3>Response</h3>
+          <h3>Example Request</h3>
+          <pre className="code-block">{`fetch('https://your-domain.com/api/scan', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    contractAddress: 'So11111111111111111111111111111111111111112'
+  })
+})
+.then(res => res.json())
+.then(data => {
+  console.log('Verdict:', data.verdict);
+  console.log('Score:', data.tokenScore);
+  console.log('Narrative:', data.narrativeClaim);
+});`}</pre>
+          
+          <h3>Response Format</h3>
           <pre className="code-block">{`{
   "cached": boolean,
   "contractAddress": "string",
@@ -258,10 +305,59 @@ function Documentation() {
   "verdict": "CONFIRMED | PARTIAL | UNVERIFIED",
   "confidence": "high | medium | low",
   "redFlags": ["string"],
-  "marketData": { ... },
-  "socials": { ... },
-  "securityData": { ... },
-  "notesForUser": "string"
+  "tokenScore": number (0-100),
+  "sentiment": number (0-100),
+  "marketData": {
+    "price": number,
+    "liquidity": number,
+    "volume24h": number,
+    "priceChange24h": number
+  },
+  "socials": {
+    "website": "string",
+    "twitter": "string",
+    "telegram": "string"
+  },
+  "securityData": {
+    "riskFlags": ["string"],
+    "mintAuthority": "string",
+    "freezeAuthority": "string"
+  },
+  "notesForUser": "string",
+  "fundamentals": "string",
+  "hype": "string"
+}`}</pre>
+
+          <h3>Rate Limits</h3>
+          <div className="source-grid">
+            <div className="source-card">
+              <h3>Free Tier</h3>
+              <p><strong>10 requests/minute</strong></p>
+              <p><strong>100 requests/day</strong></p>
+              <p>Perfect for testing and low-volume applications</p>
+            </div>
+          </div>
+          <p style={{ marginTop: '16px', fontSize: '14px', color: '#909090' }}>
+            Additional tiers (Starter, Pro, Enterprise) will be available soon. Contact us for custom solutions.
+          </p>
+
+          <h3>Error Responses</h3>
+          <pre className="code-block">{`// Rate limit exceeded
+{
+  "error": "Rate limit exceeded",
+  "message": "Too many requests. Please try again later."
+}
+
+// Invalid API key
+{
+  "error": "Unauthorized",
+  "message": "Invalid or missing API key"
+}
+
+// Invalid request
+{
+  "error": "Bad Request",
+  "message": "contractAddress is required"
 }`}</pre>
         </section>
 
