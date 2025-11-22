@@ -28,10 +28,11 @@ DYOR Scanner is an intelligent analysis platform that helps investors make infor
 ## Tech Stack
 
 - **Frontend**: React 19, Vite, React Router
-- **Backend**: Vercel Serverless Functions
-- **AI**: OpenAI GPT-4
+- **Backend**: Vercel Serverless Functions, Node.js
+- **AI**: OpenAI GPT-4o-mini
 - **Database**: Supabase (PostgreSQL)
-- **APIs**: DexScreener, RugCheck
+- **APIs**: DexScreener, RugCheck, Helius
+- **Telegram**: node-telegram-bot-api
 - **PDF Generation**: jsPDF, html2canvas
 
 ## Getting Started
@@ -103,6 +104,27 @@ The application will be available at `http://localhost:5173`
 
 4. Export results as PDF or copy the full report
 
+## Telegram Bot
+
+DYOR Scanner is also available as a Telegram bot! Analyze tokens directly in Telegram by sending contract addresses to the bot.
+
+### Features
+
+- Instant token analysis via Telegram
+- Same powerful AI analysis as the web app
+- Real-time market data and security checks
+- Simple conversational interface
+- No need to open a browser
+
+### Quick Start
+
+1. Get a Telegram bot token from [@BotFather](https://t.me/botfather)
+2. Add `TELEGRAM_BOT_KEY` to your `.env` file
+3. Run: `npm run bot`
+4. Start chatting with your bot!
+
+For detailed setup instructions, see [TELEGRAM_BOT_SETUP.md](./TELEGRAM_BOT_SETUP.md)
+
 ## API
 
 ### Endpoint
@@ -165,13 +187,22 @@ The narrative's claims cannot be verified through available information. Entitie
 ```
 dyor/
 ├── api/
-│   └── scan.js              # Vercel serverless function
+│   ├── scan.js              # Vercel serverless function
+│   ├── request-api-key.js   # API key generation
+│   ├── usage.js             # API usage tracking
+│   └── utils/
+│       └── apiAuth.js       # API authentication
+├── server/
+│   ├── bot.js               # Telegram bot
+│   ├── scan.js              # Shared scan logic
+│   └── README.md            # Bot documentation
 ├── src/
 │   ├── components/
 │   │   ├── ScanForm.jsx     # Input form component
 │   │   └── ScanResult.jsx   # Results display component
 │   ├── pages/
-│   │   └── Documentation.jsx # Documentation page
+│   │   ├── Documentation.jsx # Documentation page
+│   │   └── ApiKeys.jsx      # API key management
 │   ├── lib/
 │   │   └── supabaseClient.js # Supabase client
 │   ├── App.jsx              # Main application
@@ -180,6 +211,7 @@ dyor/
 ├── public/                  # Static assets
 ├── package.json
 ├── vite.config.js
+├── TELEGRAM_BOT_SETUP.md    # Bot quick start guide
 └── README.md
 ```
 
@@ -206,8 +238,11 @@ The API routes will automatically be deployed as serverless functions.
 ## Development
 
 ```bash
-# Start development server
+# Start development server (web app)
 npm run dev
+
+# Start Telegram bot
+npm run bot
 
 # Build for production
 npm run build

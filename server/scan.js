@@ -1,7 +1,9 @@
 // api/scan.js
+import 'dotenv/config';
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 import * as cheerio from "cheerio";
+import { searchTokenOnTwitter } from "./twitterScraper.js";
 
 // ScrapingBee API configuration
 const SCRAPINGBEE_API_KEY = process.env.SCRAPINGBEE_KEY;
@@ -484,108 +486,76 @@ function calculateTokenScore(tokenData) {
 // Search Nitter for tweets containing a ticker/symbol
 async function searchNitterForTicker(ticker) {
   const startTime = Date.now();
-  console.log(`[Nitter Scraper] Starting search for ticker: ${ticker}`);
+  console.log(`[Twitter Search] Starting Twitter search for ticker: ${ticker}`);
   
   if (!ticker || ticker === "???") {
-    console.log(`[Nitter Scraper] No valid ticker provided`);
+    console.log(`[Twitter Search] No valid ticker provided`);
     return null;
   }
 
-  if (!SCRAPINGBEE_API_KEY) {
-    console.log(`[Nitter Scraper] SCRAPINGBEE_KEY not set, skipping search`);
-    return {
-      tweets: [],
-      ticker,
-      tweetCount: 0,
-    };
-  }
-
-  // Nitter mirrors to try (in order of preference)
+  // For ticker search, we'll try multiple Nitter mirrors with proper error detection
   const nitterMirrors = [
-    'https://nitter.net',
     'https://nitter.privacydev.net',
+    'https://nitter.net',
     'https://nitter.poast.org',
   ];
 
-  // Search for token with $ symbol (e.g., "$PEPE")
-  const searchQuery = `$${ticker}`;
-
   for (const mirror of nitterMirrors) {
     try {
-      console.log(`[Nitter Scraper] Trying mirror: ${mirror}`);
-      
-      // Build Nitter search URL
+      // Search for tweets containing the ticker symbol (with $)
+      const searchQuery = `$${ticker}`;
       const searchUrl = `${mirror}/search?f=tweets&q=${encodeURIComponent(searchQuery)}`;
-      console.log(`[Nitter Scraper] Fetching via ScrapingBee: ${searchUrl}`);
+      console.log(`[Twitter Search] Trying mirror: ${searchUrl}`);
+
+      const response = await fetchWithTimeout(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      }, 8000);
       
-      // Fetch HTML using ScrapingBee
-      const html = await fetchWithScrapingBee(searchUrl);
+      console.log(`[Twitter Search] Response status: ${response.status}`);
       
-      // Check for rate limiting or errors
+      if (!response.ok) {
+        console.log(`[Twitter Search] Mirror ${mirror} failed with status ${response.status}`);
+        continue;
+      }
+
+      const html = await response.text();
+
+      // Detect if Nitter actually returned content
+      if (!html.includes('timeline-item') && !html.includes('tweet-content')) {
+        console.log(`[Twitter Search] Mirror ${mirror} returned no tweets`);
+        continue;
+      }
+
+      // Detect rate limiting
       if (html.includes('rate limit') || html.includes('Too many requests')) {
-        console.log(`[Nitter Scraper] ${mirror} is rate limited`);
-        continue; // Try next mirror
+        console.log(`[Twitter Search] Mirror ${mirror} is rate limited`);
+        continue;
       }
 
-      // Parse HTML with cheerio
       const $ = cheerio.load(html);
-      
-      // Check if we have tweets
-      const tweetElements = $('.timeline-item');
-      if (tweetElements.length === 0) {
-        console.log(`[Nitter Scraper] No tweets found on ${mirror}`);
-        continue; // Try next mirror
-      }
-
-      // Extract tweets using Nitter's HTML structure
       const tweets = [];
-      
-      tweetElements.slice(0, 5).each((i, el) => {
-        const $tweet = $(el);
+
+      $(".timeline-item").each((i, el) => {
+        if (i >= 3) return; // Only first 3 tweets
+
+        const text = $(el).find(".tweet-content").text().trim();
+        const date = $(el).find("time").attr("datetime");
+        const likes = $(el).find(".icon-heart").parent().text().trim() || '0';
+        const retweets = $(el).find(".icon-retweet").parent().text().trim() || '0';
         
-        // Extract tweet text
-        const text = $tweet.find('.tweet-content').text().trim();
-        
-        // Extract author and username
-        const authorElement = $tweet.find('.tweet-header a').first();
-        const author = authorElement.text().trim();
-        const usernameHref = authorElement.attr('href') || '';
-        const username = usernameHref ? usernameHref.replace('/', '') : '';
-        
-        // Extract time
-        const timeElement = $tweet.find('time');
-        const date = timeElement.attr('datetime') || '';
-        const timeText = timeElement.text().trim();
-        
-        // Extract engagement metrics (Nitter format)
-        const replyElement = $tweet.find('.icon-reply').parent();
-        const retweetElement = $tweet.find('.icon-retweet').parent();
-        const likeElement = $tweet.find('.icon-heart').parent();
-        
-        const replies = replyElement.text().match(/\d+/) ? replyElement.text().match(/\d+/)[0] : '0';
-        const retweets = retweetElement.text().match(/\d+/) ? retweetElement.text().match(/\d+/)[0] : '0';
-        const likes = likeElement.text().match(/\d+/) ? likeElement.text().match(/\d+/)[0] : '0';
-        
-        // Extract tweet URL
-        const linkElement = $tweet.find('a[href*="/status/"]').first();
-        let tweetUrl = null;
+        const tweetLink = $(el).find("a.tweet-link").attr("href");
         let tweetId = null;
+        let tweetUrl = null;
+        let username = null;
         
-        if (linkElement.length > 0) {
-          const href = linkElement.attr('href') || '';
-          if (href) {
-            // Convert Nitter URL to X.com URL
-            const statusMatch = href.match(/\/status\/(\d+)/);
-            if (statusMatch) {
-              tweetId = statusMatch[1];
-              if (username) {
-                tweetUrl = `https://x.com/${username}/status/${tweetId}`;
-              } else {
-                tweetUrl = href.startsWith('http') ? href : `https://x.com${href}`;
-              }
-            } else {
-              tweetUrl = href.startsWith('http') ? href : `https://x.com${href}`;
-            }
+        if (tweetLink) {
+          const linkMatch = tweetLink.match(/\/([^\/]+)\/status\/(\d+)/);
+          if (linkMatch) {
+            username = linkMatch[1];
+            tweetId = linkMatch[2];
+            tweetUrl = `https://x.com/${username}/status/${tweetId}`;
           }
         }
 
@@ -593,54 +563,39 @@ async function searchNitterForTicker(ticker) {
         if (text && (text.includes(`$${ticker}`) || text.toLowerCase().includes(ticker.toLowerCase()))) {
           tweets.push({
             text,
-            author,
-            username,
             date,
-            timeText,
-            replies: parseInt(replies) || 0,
-            retweets: parseInt(retweets) || 0,
-            likes: parseInt(likes) || 0,
+            likes,
+            retweets,
             tweetId,
             tweetUrl,
+            username,
           });
         }
       });
 
       if (tweets.length > 0) {
-        const duration = Date.now() - startTime;
-        console.log(`[Nitter Scraper] ✅ Success via ${mirror}: Found ${tweets.length} tweets - ${duration}ms`);
-
-        // Format to match expected structure
-        const formattedTweets = tweets.map(tweet => ({
-          text: tweet.text,
-          date: tweet.date || tweet.timeText,
-          likes: tweet.likes.toString(),
-          retweets: tweet.retweets.toString(),
-          tweetId: tweet.tweetId,
-          tweetUrl: tweet.tweetUrl,
-          username: tweet.username,
-          author: tweet.author,
-        }));
-
-        return {
-          tweets: formattedTweets,
-          query: searchQuery,
+        const result = {
+          tweets,
           ticker,
-          tweetCount: formattedTweets.length,
+          tweetCount: tweets.length,
         };
+        
+        const duration = Date.now() - startTime;
+        console.log(`[Twitter Search] ✅ Success via ${mirror}: ${tweets.length} ticker tweets found - ${duration}ms`);
+        return result;
       } else {
-        console.log(`[Nitter Scraper] ${mirror} returned 0 relevant tweets`);
+        console.log(`[Twitter Search] Mirror ${mirror} returned 0 relevant tweets`);
       }
-    } catch (error) {
-      console.log(`[Nitter Scraper] Error with ${mirror}: ${error.message}`);
-      continue; // Try next mirror
+    } catch (mirrorErr) {
+      console.log(`[Twitter Search] Mirror error: ${mirrorErr.message}`);
+      continue;
     }
   }
 
-  // All mirrors failed
   const duration = Date.now() - startTime;
-  console.log(`[Nitter Scraper] ❌ All mirrors failed after ${duration}ms`);
+  console.log(`[Twitter Search] ❌ All mirrors failed or returned no tweets after ${duration}ms`);
   
+  // Return empty result instead of null so the scan doesn't fail
   return {
     tweets: [],
     ticker,
@@ -671,8 +626,8 @@ async function getTwitterFromNitter(twitterUrl) {
 
   if (!SCRAPINGBEE_API_KEY) {
     console.log(`[Nitter Scraper] SCRAPINGBEE_KEY not set, skipping`);
-      return null;
-    }
+    return null;
+  }
 
   // Nitter mirrors to try (in order of preference)
   const nitterMirrors = [
@@ -699,8 +654,8 @@ async function getTwitterFromNitter(twitterUrl) {
       }
 
       // Parse HTML with cheerio
-    const $ = cheerio.load(html);
-
+      const $ = cheerio.load(html);
+      
       // Check if we have tweets
       const tweetElements = $('.timeline-item');
       if (tweetElements.length === 0) {
@@ -709,8 +664,8 @@ async function getTwitterFromNitter(twitterUrl) {
       }
 
       // Extract tweets using Nitter's HTML structure
-    const tweets = [];
-
+      const tweets = [];
+      
       tweetElements.slice(0, 5).each((i, el) => {
         const $tweet = $(el);
         
@@ -751,9 +706,9 @@ async function getTwitterFromNitter(twitterUrl) {
         }
 
         if (text) {
-      tweets.push({
-        text,
-        date,
+          tweets.push({
+            text,
+            date,
             timeText,
             likes: parseInt(likes) || 0,
             retweets: parseInt(retweets) || 0,
@@ -768,13 +723,13 @@ async function getTwitterFromNitter(twitterUrl) {
         const duration = Date.now() - startTime;
         console.log(`[Nitter Scraper] ✅ Success via ${mirror}: Found ${tweets.length} tweets - ${duration}ms`);
 
-    const result = {
-      tweets,
-      topTweet: tweets[0] || null,
-      tweetCount: tweets.length,
-    };
-    
-    return result;
+        const result = {
+          tweets,
+          topTweet: tweets[0] || null,
+          tweetCount: tweets.length,
+        };
+        
+        return result;
       } else {
         console.log(`[Nitter Scraper] ${mirror} returned 0 tweets`);
       }
@@ -784,9 +739,9 @@ async function getTwitterFromNitter(twitterUrl) {
     }
   }
 
-    const duration = Date.now() - startTime;
+  const duration = Date.now() - startTime;
   console.error(`[Nitter Scraper] ❌ All mirrors failed after ${duration}ms`);
-    return null;
+  return null;
 }
 
 // Fetch Telegram via public t.me/s/{channel}
@@ -1095,11 +1050,12 @@ async function getTokenData(contractAddress) {
     const socialStart = Date.now();
     
     const symbol = dex?.symbol || helius?.tokenSymbol || "???";
+    const tokenName = dex?.tokenName || helius?.tokenName || null;
     
     const [twitterDataResult, twitterSearchResult, telegramDataResult, websiteDataResult] =
       await Promise.allSettled([
         socials?.x ? getTwitterFromNitter(socials.x) : Promise.resolve(null),
-        searchNitterForTicker(symbol),
+        searchTokenOnTwitter(symbol, tokenName),
         socials?.telegram
           ? getTelegramFeed(socials.telegram)
           : Promise.resolve(null),
@@ -1804,8 +1760,8 @@ export default async function handler(req, res) {
       
       const response = {
         success: apiKeyData ? true : undefined,
-          cached: true,
-          ...cached.result_json,
+        cached: true,
+        ...cached.result_json,
       };
       
       if (apiKeyData && rateLimitInfo) {
@@ -2002,3 +1958,124 @@ export default async function handler(req, res) {
     });
   }
 }
+
+// Perform full scan with AI analysis (for Telegram bot and other services)
+export async function performFullScan(contractAddress) {
+  const requestStart = Date.now();
+  console.log(`\n[FullScan] ===== Starting full scan for ${contractAddress} =====`);
+  
+  const trimmedAddress = contractAddress.trim();
+  
+  // Check cache first
+  const cached = await getCachedScan(trimmedAddress);
+  if (cached?.result_json && cached.result_json.marketData && cached.result_json.socials) {
+    console.log(`[FullScan] ✅ Cache hit! Returning cached result`);
+    return cached.result_json;
+  }
+  
+  console.log(`[FullScan] Cache miss - proceeding with fresh scan`);
+  
+  // Fetch token data
+  const tokenData = await getTokenData(trimmedAddress);
+  
+  // Prepare social context for narrative extraction
+  const socialContext = JSON.stringify({
+    website: tokenData.websiteData,
+    twitter: tokenData.twitterData,
+    telegram: tokenData.telegramData,
+  });
+  
+  // Extract narrative
+  const { narrative_claim, entities } = await extractNarrativeClaim(
+    tokenData.projectSummary,
+    socialContext
+  );
+  
+  // Search for evidence (parallel)
+  const [webEvidence, twitterEvidence] = await Promise.allSettled([
+    searchWebForNarrative(narrative_claim, entities),
+    searchTwitterForLore(narrative_claim, entities),
+  ]);
+  
+  const webResult = webEvidence.status === "fulfilled" ? webEvidence.value : { articles: [], searchPerformed: false };
+  const twitterResult = twitterEvidence.status === "fulfilled" ? twitterEvidence.value : { loreTweet: null, validationTweets: [] };
+  
+  // Classify narrative
+  const { verdict, reasoning, confidence, redFlags } = await classifyNarrative({
+    narrativeClaim: narrative_claim,
+    projectSummary: tokenData.projectSummary,
+    entities,
+    webEvidence: webResult,
+    twitterEvidence: twitterResult,
+  });
+  
+  // Generate analysis sections in parallel
+  const [summaryResult, fundamentalsResult, hypeResult] = await Promise.allSettled([
+    generateSummary({ 
+      narrativeClaim: narrative_claim, 
+      verdict, 
+      tokenData,
+      tokenName: tokenData.tokenName 
+    }),
+    generateFundamentals({ 
+      tokenData, 
+      verdict, 
+      reasoning 
+    }),
+    generateHype({ 
+      tokenData, 
+      narrativeClaim: narrative_claim 
+    }),
+  ]);
+  
+  const summary = summaryResult.status === "fulfilled" ? summaryResult.value : "Summary unavailable.";
+  const fundamentals = fundamentalsResult.status === "fulfilled" ? fundamentalsResult.value : "Fundamentals unavailable.";
+  const hype = hypeResult.status === "fulfilled" ? hypeResult.value : "Hype analysis unavailable.";
+  
+  // Assemble result
+  const result = {
+    contractAddress: trimmedAddress,
+    projectSummary: tokenData.projectSummary,
+    tokenName: tokenData.tokenName,
+    symbol: tokenData.symbol,
+    narrativeClaim: narrative_claim,
+    entities,
+    marketData: tokenData.marketData,
+    socials: tokenData.socials,
+    securityData: tokenData.securityData,
+    fundamentals: tokenData.fundamentals,
+    birdeye: tokenData.birdeye,
+    sentimentScore: tokenData.sentimentScore,
+    tokenScore: tokenData.tokenScore,
+    twitterData: tokenData.twitterData,
+    tickerTweets: tokenData.tickerTweets,
+    telegramData: tokenData.telegramData,
+    websiteData: tokenData.websiteData,
+    loreTweet: twitterResult?.loreTweet || null,
+    verdict,
+    verdictReasoning: reasoning,
+    confidence,
+    redFlags: redFlags || [],
+    evidence: {
+      articles: webResult?.articles || [],
+      tweets: twitterResult?.validationTweets || [],
+    },
+    summary,
+    fundamentalsAnalysis: fundamentals,
+    hypeAnalysis: hype,
+  };
+  
+  // Save to cache (don't wait for it)
+  saveScan(trimmedAddress, result).catch((err) =>
+    console.error("[FullScan] Background cache save failed:", err)
+  );
+  
+  const totalDuration = Date.now() - requestStart;
+  console.log(`[FullScan] ✅ Scan complete in ${totalDuration}ms`);
+  
+  return result;
+}
+
+// Export for use by Telegram bot and other services
+// Note: performFullScan is already exported above, so we only export getTokenData here
+export { getTokenData };

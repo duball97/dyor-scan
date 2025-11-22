@@ -8,14 +8,18 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "vercel:dev": "vercel dev"
+    "vercel:dev": "vercel dev",
+    "bot": "node server/bot.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.81.1",
     "cheerio": "^1.1.2",
+    "dotenv": "^17.2.3",
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.4",
+    "node-telegram-bot-api": "^0.66.0",
     "openai": "^6.9.0",
+    "puppeteer": "^24.31.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.6"
@@ -29,7 +33,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
-    "vercel": "^48.10.3",
+    "vercel": "^48.10.10",
     "vite": "^7.2.2"
   }
 }
