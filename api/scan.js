@@ -1783,42 +1783,8 @@ export default async function handler(req, res) {
 
     console.log(`[Handler] ✅ Validation passed`);
 
-    // Check cache
-    console.log(`[Handler] Checking cache...`);
-    const cacheStart = Date.now();
-    const cached = await getCachedScan(trimmedAddress);
-    const cacheDuration = Date.now() - cacheStart;
-    
-    if (
-      cached?.result_json &&
-      cached.result_json.marketData &&
-      cached.result_json.socials
-    ) {
-      const totalDuration = Date.now() - requestStart;
-      console.log(`[Handler] ✅ Cache hit! Returning cached result (${totalDuration}ms total)\n`);
-      
-      // Track usage if API key is present
-      if (apiKeyData && apiAuth) {
-        apiAuth.trackUsage(apiKeyData.id, trimmedAddress, totalDuration, true).catch(console.error);
-      }
-      
-      const response = {
-        success: apiKeyData ? true : undefined,
-          cached: true,
-          ...cached.result_json,
-      };
-      
-      if (apiKeyData && rateLimitInfo) {
-        response.usage = {
-          requestsRemaining: rateLimitInfo.remaining?.perMinute || 0,
-          resetAt: rateLimitInfo.resetAt?.perMinute?.toISOString()
-        };
-      }
-      
-      return res.status(200).json(response);
-    }
-    
-    console.log(`[Handler] Cache miss (${cacheDuration}ms) - proceeding with fresh scan`);
+    // Always fetch fresh data (cache disabled to ensure accurate market data)
+    console.log(`[Handler] Fetching fresh data (cache disabled)...`);
 
     // Fetch token data
     console.log(`[Handler] Starting fresh scan...`);

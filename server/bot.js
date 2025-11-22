@@ -9,17 +9,17 @@ const bot = new TelegramBot(process.env.TELEGRAM_BOT_KEY, { polling: true });
 // Store user states (for tracking conversations)
 const userStates = new Map();
 
-// Helper: Format number with commas
+// Helper: Format number with commas (returns null if invalid)
 function formatNumber(num) {
-  if (!num && num !== 0) return 'N/A';
+  if (!num && num !== 0) return null;
   return num.toLocaleString('en-US');
 }
 
-// Helper: Format price
+// Helper: Format price (returns null if invalid)
 function formatPrice(price) {
-  if (!price) return "N/A";
+  if (!price) return null;
   const numPrice = parseFloat(price);
-  if (isNaN(numPrice)) return "N/A";
+  if (isNaN(numPrice)) return null;
   if (numPrice < 0.0001) {
     return `$${numPrice.toFixed(8)}`;
   } else if (numPrice < 1) {
@@ -72,47 +72,60 @@ function formatScanResult(result) {
   
   // Token Info
   message += `📊 *Token: ${tokenName || 'Unknown'} (${symbol || '???'})*\n`;
-  message += `📝 Contract: \`${contractAddress || 'N/A'}\`\n\n`;
+  if (contractAddress) {
+    message += `📝 Contract: \`${contractAddress}\`\n`;
+  }
+  message += `\n`;
   
   // Scores
   message += `⚡ *Overall Score: ${score || 0}/100*\n`;
   message += `💭 *Sentiment: ${sentiment || 0}/100*\n`;
-  message += `🎯 *Verdict: ${verdict || 'Unknown'}*\n\n`;
   
-  // Market Data
-  message += `📈 *Market Data*\n`;
-  message += `• Price: ${formatPrice(priceUsd)}\n`;
+  // Only show verdict if it's not UNVERIFIED
+  if (verdict && verdict !== 'UNVERIFIED' && verdict !== 'Unknown') {
+    message += `🎯 *Verdict: ${verdict}*\n`;
+  }
+  message += `\n`;
+  
+  // Market Data (only show if we have data)
+  const marketDataItems = [];
+  
+  const priceText = formatPrice(priceUsd);
+  if (priceText) {
+    marketDataItems.push(`• Price: ${priceText}`);
+  }
   
   // Safe price change formatting
-  let priceChangeText = 'N/A';
   if (priceChange24h !== null && priceChange24h !== undefined && typeof priceChange24h === 'number') {
-    priceChangeText = (priceChange24h > 0 ? '+' : '') + priceChange24h.toFixed(2) + '%';
+    const priceChangeText = (priceChange24h > 0 ? '+' : '') + priceChange24h.toFixed(2) + '%';
+    marketDataItems.push(`• 24h Change: ${priceChangeText}`);
   }
-  message += `• 24h Change: ${priceChangeText}\n`;
   
-  message += `• Liquidity: ${liquidity ? '$' + formatNumber(Math.round(liquidity)) : 'N/A'}\n`;
-  message += `• Volume (24h): ${volume24h ? '$' + formatNumber(Math.round(volume24h)) : 'N/A'}\n`;
-  message += `• Market Cap: ${marketCap ? '$' + formatNumber(Math.round(marketCap)) : 'N/A'}\n`;
-  message += `• Holders: ${formatNumber(holders)}\n\n`;
+  if (liquidity) {
+    marketDataItems.push(`• Liquidity: $${formatNumber(Math.round(liquidity))}`);
+  }
+  
+  if (volume24h) {
+    marketDataItems.push(`• Volume (24h): $${formatNumber(Math.round(volume24h))}`);
+  }
+  
+  if (marketCap) {
+    marketDataItems.push(`• Market Cap: $${formatNumber(Math.round(marketCap))}`);
+  }
+  
+  const holdersFormatted = formatNumber(holders);
+  if (holdersFormatted) {
+    marketDataItems.push(`• Holders: ${holdersFormatted}`);
+  }
+  
+  if (marketDataItems.length > 0) {
+    message += `📈 *Market Data*\n`;
+    message += marketDataItems.join('\n') + '\n\n';
+  }
   
   // Narrative
   if (narrativeClaim) {
     message += `🎭 *Narrative*\n${narrativeClaim}\n\n`;
-  }
-  
-  // Summary (AI-generated)
-  if (summary) {
-    message += `📋 *AI Summary*\n${summary}\n\n`;
-  }
-  
-  // Fundamentals
-  if (fundamentalsAnalysis) {
-    message += `🔬 *Fundamentals*\n${fundamentalsAnalysis}\n\n`;
-  }
-  
-  // Hype Analysis
-  if (hypeAnalysis) {
-    message += `🔥 *Hype Meter*\n${hypeAnalysis}\n\n`;
   }
   
   // Tweets about the token
@@ -178,7 +191,7 @@ Example:
 ⚡ Powered by AI • Real-time data • Professional analysis
   `.trim();
   
-  bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
+  bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown', disable_web_page_preview: true });
 });
 
 // Command: /help
@@ -209,7 +222,7 @@ Simply send any Solana contract address and I'll analyze it for you!
 Need help? Contact: @dyorscan
   `.trim();
   
-  bot.sendMessage(chatId, helpMessage, { parse_mode: 'Markdown' });
+  bot.sendMessage(chatId, helpMessage, { parse_mode: 'Markdown', disable_web_page_preview: true });
 });
 
 // Command: /about
@@ -242,7 +255,7 @@ DYOR (Do Your Own Research) Scanner is an AI-powered tool for analyzing Solana t
 This tool is for informational purposes only. Always do your own research and never invest more than you can afford to lose.
   `.trim();
   
-  bot.sendMessage(chatId, aboutMessage, { parse_mode: 'Markdown' });
+  bot.sendMessage(chatId, aboutMessage, { parse_mode: 'Markdown', disable_web_page_preview: true });
 });
 
 // Handle text messages (contract addresses)
@@ -269,7 +282,7 @@ Please send a valid Solana contract address (32-44 characters, base58 encoded).
 
 Example:
 \`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\``,
-      { parse_mode: 'Markdown' }
+      { parse_mode: 'Markdown', disable_web_page_preview: true }
     );
     return;
   }
@@ -278,7 +291,7 @@ Example:
   const analyzingMsg = await bot.sendMessage(
     chatId,
     `🔍 Analyzing token...\n\nContract: \`${text}\`\n\nThis may take 10-15 seconds...`,
-    { parse_mode: 'Markdown' }
+    { parse_mode: 'Markdown', disable_web_page_preview: true }
   );
   
   try {
@@ -302,10 +315,10 @@ Example:
       // Telegram message limit is 4096 characters
       const parts = formattedResult.match(/[\s\S]{1,4000}/g) || [];
       for (const part of parts) {
-        await bot.sendMessage(chatId, part, { parse_mode: 'Markdown' });
+        await bot.sendMessage(chatId, part, { parse_mode: 'Markdown', disable_web_page_preview: true });
       }
     } else {
-      await bot.sendMessage(chatId, formattedResult, { parse_mode: 'Markdown' });
+      await bot.sendMessage(chatId, formattedResult, { parse_mode: 'Markdown', disable_web_page_preview: true });
     }
     
     // Add inline keyboard with actions
@@ -324,7 +337,7 @@ Example:
     await bot.sendMessage(
       chatId,
       '👆 Quick Actions:',
-      { reply_markup: keyboard }
+      { reply_markup: keyboard, disable_web_page_preview: true }
     );
     
     console.log(`[Telegram Bot] ✅ Scan completed for user ${chatId}`);
@@ -352,7 +365,7 @@ Common issues:
 • Temporary API issues
 
 Try again or send /help for more information.`,
-      { parse_mode: 'Markdown' }
+      { parse_mode: 'Markdown', disable_web_page_preview: true }
     );
   }
 });
@@ -366,7 +379,7 @@ bot.on('callback_query', async (query) => {
     bot.sendMessage(
       chatId,
       '📝 Send me another Solana contract address to analyze!',
-      { parse_mode: 'Markdown' }
+      { parse_mode: 'Markdown', disable_web_page_preview: true }
     );
   }
 });
