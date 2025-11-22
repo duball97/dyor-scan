@@ -358,27 +358,71 @@ async function getBirdeyeData(mint) {
 }
 
 // Compute market sentiment score (0-100)
-function computeMarketSentiment(birdeye) {
-  if (!birdeye) return null;
+function computeMarketSentiment(birdeye, dex, tickerTweets, twitterData) {
+  let priceChange = 0;
+  let volume = 0;
+  let hasSocialActivity = false;
+  let socialEngagement = 0;
 
-  const price = birdeye.priceChange24h ?? 0;
-  const volume = birdeye.volume24h ?? 0;
-  const trades = birdeye.tradeCount24h ?? 0;
-  const rank = birdeye.trendingRank ?? 999;
+  // Use Birdeye if available, otherwise fall back to DexScreener
+  if (birdeye) {
+    priceChange = birdeye.priceChange24h ?? 0;
+    volume = birdeye.volume24h ?? 0;
+  } else if (dex) {
+    priceChange = dex.priceChange24h ?? 0;
+    volume = dex.volume24h ?? 0;
+  }
 
-  // Normalize
-  const priceScore = Math.max(0, Math.min(1, (price + 50) / 100));
-  const tradeScore = Math.max(0, Math.min(1, Math.log10(trades + 1) / 4));
-  const volumeScore = Math.max(0, Math.min(1, Math.log10(volume + 1) / 6));
-  const trendingScore = Math.max(0, Math.min(1, (500 - rank) / 500));
+  // Factor in social activity (tweets, engagement)
+  if (tickerTweets && tickerTweets.tweets && tickerTweets.tweets.length > 0) {
+    hasSocialActivity = true;
+    // Calculate average engagement from tweets
+    const totalEngagement = tickerTweets.tweets.reduce((sum, tweet) => {
+      const likes = parseInt(tweet.likes) || 0;
+      const retweets = parseInt(tweet.retweets) || 0;
+      return sum + likes + (retweets * 2); // Retweets weighted more
+    }, 0);
+    socialEngagement = totalEngagement / tickerTweets.tweets.length;
+  }
 
+  if (twitterData && twitterData.tweets && twitterData.tweets.length > 0) {
+    hasSocialActivity = true;
+  }
+
+  // If no market data at all, return null
+  if (!birdeye && !dex) {
+    return null;
+  }
+
+  // Normalize market metrics
+  const priceScore = Math.max(0, Math.min(1, (priceChange + 50) / 100));
+  const volumeScore = Math.max(0, Math.min(1, Math.log10(volume + 1) / 8)); // Adjusted for larger volumes
+  
+  // Social activity score (0-0.3 weight)
+  let socialScore = 0;
+  if (hasSocialActivity) {
+    if (socialEngagement > 0) {
+      // Higher engagement = higher score
+      socialScore = Math.min(0.3, Math.log10(socialEngagement + 1) / 5);
+    } else {
+      // Just having tweets is positive
+      socialScore = 0.15;
+    }
+  }
+
+  // Calculate sentiment (price + volume + social)
   const sentiment =
-    0.3 * priceScore +
-    0.3 * tradeScore +
-    0.25 * volumeScore +
-    0.15 * trendingScore;
+    0.4 * priceScore +
+    0.3 * volumeScore +
+    0.3 * socialScore;
 
-  return Math.round(sentiment * 100); // 0–100 score
+  // Ensure minimum of 20 if there's any activity
+  const finalSentiment = Math.round(sentiment * 100);
+  if (hasSocialActivity && finalSentiment < 20) {
+    return 20; // Minimum sentiment if there's social activity
+  }
+
+  return finalSentiment; // 0–100 score
 }
 
 // Calculate comprehensive token score (1-100)
@@ -1068,27 +1112,7 @@ async function getTokenData(contractAddress) {
       console.error(`[TokenData] Birdeye failed:`, birdeyeData.reason);
     }
 
-    const sentimentScore = computeMarketSentiment(birdeye);
-    console.log(`[TokenData] Sentiment score: ${sentimentScore || "N/A"}`);
-    
     const socials = dex?.socials || null;
-    
-    // Calculate comprehensive token score
-    const tokenScoreData = {
-      marketData: {
-        price: birdeye?.price || dex?.priceUsd || null,
-        liquidity: birdeye?.liquidity || dex?.liquidity || null,
-        volume24h: birdeye?.volume24h || dex?.volume24h || null,
-      },
-      fundamentals: helius,
-      securityData: rug,
-      socials,
-      sentimentScore,
-    };
-    
-    const tokenScore = calculateTokenScore(tokenScoreData);
-    console.log(`[TokenData] Comprehensive token score: ${tokenScore}/100`);
-    console.log(`[TokenData] Social links: website=${!!socials?.website}, twitter=${!!socials?.x}, telegram=${!!socials?.telegram}`);
 
     // Fetch social data in parallel
     console.log(`[TokenData] Fetching social data...`);
@@ -1125,6 +1149,27 @@ async function getTokenData(contractAddress) {
       websiteDataResult.status === "fulfilled"
         ? websiteDataResult.value
         : null;
+
+    // Calculate sentiment AFTER social data is fetched (so we can include tweet engagement)
+    const sentimentScore = computeMarketSentiment(birdeye, dex, tickerTweets, twitterData);
+    console.log(`[TokenData] Sentiment score: ${sentimentScore || "N/A"}`);
+    
+    // Calculate comprehensive token score
+    const tokenScoreData = {
+      marketData: {
+        price: birdeye?.price || dex?.priceUsd || null,
+        liquidity: birdeye?.liquidity || dex?.liquidity || null,
+        volume24h: birdeye?.volume24h || dex?.volume24h || null,
+      },
+      fundamentals: helius,
+      securityData: rug,
+      socials,
+      sentimentScore,
+    };
+    
+    const tokenScore = calculateTokenScore(tokenScoreData);
+    console.log(`[TokenData] Comprehensive token score: ${tokenScore}/100`);
+    console.log(`[TokenData] Social links: website=${!!socials?.website}, twitter=${!!socials?.x}, telegram=${!!socials?.telegram}`);
 
     console.log(`[TokenData] Social results: Twitter=${!!twitterData}, TickerTweets=${!!tickerTweets}, Telegram=${!!telegramData}, Website=${!!websiteData}`);
     
