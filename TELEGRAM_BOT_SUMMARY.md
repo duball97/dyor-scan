@@ -201,7 +201,7 @@ Bot: 🔍 DYOR Token Analysis
 
 [... more analysis ...]
 
-🔗 View full report: https://dyorscan.com
+🔗 View full report: https://dyorscan.io
 📱 Scan more tokens: Send another contract address
 
 Bot: 👆 Quick Actions:

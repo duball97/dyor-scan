@@ -303,7 +303,7 @@ For 1,000 scans/month: ~$1-2 in AI costs
 
 ## Support
 
-- Website: https://dyorscan.com
+- Website: https://dyorscan.io
 - Twitter: https://x.com/dyorscan
 - Issues: GitHub Issues page
 
