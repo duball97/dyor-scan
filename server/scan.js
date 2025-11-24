@@ -1401,18 +1401,20 @@ Evaluation Criteria:
 2. Are the mentioned entities legitimate and accurately represented?
 3. What is the nature of the association (official partnership vs. inspiration vs. unsubstantiated claim)?
 
+IMPORTANT: Default to PARTIAL when evidence is mixed or limited. Only use UNVERIFIED when there is clear evidence that claims are false or misleading. Many legitimate tokens may not have extensive external documentation - this does not make them UNVERIFIED.
+
 Classification:
-- CONFIRMED: Verified connection to legitimate real-world elements with supporting evidence.
-- PARTIAL: Mix of verified elements and unverified claims. Some associations may be overstated.
-- UNVERIFIED: Insufficient evidence to verify claims. May be legitimate but lacks substantiation.
+- CONFIRMED: Strong verified connection to legitimate real-world elements with clear supporting evidence.
+- PARTIAL: Mix of verified elements and unverified claims, or limited evidence but no clear falsehoods. Most tokens fall here.
+- UNVERIFIED: Clear evidence that claims are false, misleading, or completely fabricated. Use sparingly.
 
 Provide reasoning (3-4 sentences) that:
 - Presents factual findings objectively
-- Identifies verified elements and unverified claims
-- Highlights material risks and concerns
+- Focuses on what IS known rather than what is unknown
+- Highlights material risks only when significant
 - Enables informed investment decision-making
 
-Tone: Professional, analytical, and objective. Maintain neutrality and focus on evidence-based assessment.
+Tone: Professional, analytical, and balanced. Avoid being overly cautious. Focus on evidence-based assessment.
 
 Return STRICT JSON:
 
@@ -1511,20 +1513,20 @@ async function generateSummary({ narrativeClaim, verdict, tokenData, tokenName }
 You are a professional cryptocurrency analyst. Provide a concise summary for ${tokenName || "this token"}.
 
 Format EXACTLY as follows:
-1. Two sentences (2-3 lines total) - focus on unique aspects, verdict, and key concerns/opportunities. Use **bold** for the most important information.
-2. Three one-line bullet points (each bullet point must be a single line) - use **bold** for key metrics, verdict, or critical information
+1. Two sentences (2-3 lines total) - focus on unique aspects, key metrics, and notable opportunities or concerns. Use **bold** for the most important information.
+2. Three one-line bullet points (each bullet point must be a single line) - use **bold** for key metrics, scores, or critical information
 
 Context:
 - Narrative: ${narrativeClaim}
-- Verdict: ${verdict}
 - Score: ${score}/100
 - Sentiment: ${sentiment}/100
+${verdict !== "UNVERIFIED" ? `- Verdict: ${verdict}` : ""}
 
-CRITICAL: Do NOT mention obvious facts like "uses Solana blockchain" or generic blockchain features. Focus on:
-- What makes this token unique or concerning
-- Verdict status and what it means
-- Key risks or opportunities
-- Notable metrics that stand out
+CRITICAL: Do NOT mention obvious facts like "uses Solana blockchain" or generic blockchain features. Do NOT mention "UNVERIFIED" status. Focus on:
+- What makes this token unique or notable
+- Key metrics and scores that stand out
+- Notable opportunities or concerns
+- Market activity and community engagement
 
 Structure:
 [Two sentences with **bold** for important info - avoid obvious statements]
@@ -1533,8 +1535,8 @@ Structure:
 • [Second bullet point - one line only, use **bold** for key terms]
 • [Third bullet point - one line only, use **bold** for key terms]
 
-Use markdown **bold** syntax for: verdict status, scores, critical metrics, risk levels, and key findings.
-Keep each bullet point to a single line. Be concise and factual. Avoid stating obvious or generic information.
+Use markdown **bold** syntax for: scores, critical metrics, risk levels, and key findings.
+Keep each bullet point to a single line. Be concise and factual. Avoid stating obvious or generic information. Focus on what makes this token interesting or concerning based on actual data.
 `;
 
     console.log(`[Summary] Calling OpenAI...`);
@@ -1580,13 +1582,13 @@ DATA:
 - Volume (24h): ${volume24h ? `$${(volume24h / 1000).toFixed(0)}K` : "unknown"}
 - Security: ${!hasMintAuth && !hasFreezeAuth ? "✓ Clean (no mint/freeze authority)" : "⚠ " + (hasMintAuth ? "Mint authority present" : "") + (hasFreezeAuth ? " Freeze authority present" : "")}
 - Risk flags: ${risks}
-- Verdict: ${verdict}
+${verdict !== "UNVERIFIED" ? `- Verdict: ${verdict}` : ""}
 
-CRITICAL: Be extremely concise. Focus only on what stands out - concerning metrics, security issues, or notable strengths. Skip obvious statements.
+CRITICAL: Be extremely concise. Focus only on what stands out - concerning metrics, security issues, or notable strengths. Skip obvious statements. Do NOT mention "UNVERIFIED" status.
 
-Use markdown **bold** syntax for: specific numbers/metrics, security status, risk levels, verdict, and key conclusions.
+Use markdown **bold** syntax for: specific numbers/metrics, security status, risk levels, and key conclusions.
 
-Tone: Professional, analytical, and objective. Maximum 2 sentences.
+Tone: Professional, analytical, and objective. Maximum 2 sentences. Focus on actual metrics and data.
 `;
 
     console.log(`[Fundamentals] Calling OpenAI...`);

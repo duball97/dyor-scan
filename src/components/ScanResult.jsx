@@ -146,8 +146,6 @@ function ScanResult({ result }) {
     report += `TOKEN: ${tokenName || "Unknown Token"} (${symbol || "N/A"})\n`;
     report += `CONTRACT: ${contractAddress}\n`;
     report += `SCORE: ${tokenScore || 50}/100\n`;
-    report += `VERDICT: ${verdict || "N/A"} (${confidence || "N/A"} confidence)\n`;
-    report += `\n${"=".repeat(50)}\n\n`;
 
     if (summary) {
       report += `SUMMARY\n`;
@@ -198,9 +196,6 @@ function ScanResult({ result }) {
     report += `${"-".repeat(50)}\n`;
     report += `${narrativeClaim || "No narrative extracted."}\n\n`;
 
-    report += `VERDICT REASONING\n`;
-    report += `${"-".repeat(50)}\n`;
-    report += `${verdictReasoning || "No reasoning provided."}\n\n`;
 
     if (result.redFlags && result.redFlags.length > 0) {
       report += `CONCERNS\n`;
@@ -359,7 +354,6 @@ function ScanResult({ result }) {
             </div>
           )}
           <div className="verdict-block">
-            {verdict && <Pill verdict={verdict} />}
             {cached && <span className="cached-tag">cached</span>}
           </div>
         </div>
@@ -546,12 +540,6 @@ function ScanResult({ result }) {
       </div>
 
       {/* Detailed Analysis */}
-      {verdictReasoning && (
-        <div className="result-section">
-          <h3>Detailed Analysis</h3>
-          <p className="reasoning-text">{verdictReasoning}</p>
-        </div>
-      )}
 
       {/* Social Links */}
       {socials && (socials.website || socials.x || socials.telegram) && (
