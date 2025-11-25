@@ -6,7 +6,10 @@ function Documentation() {
     <div className="app">
       <header className="site-header">
         <div className="site-header-content">
-          <Link to="/" className="logo-text-header">DYOR</Link>
+          <Link to="/" className="logo">
+            <img src="/logo.png" alt="DYOR" className="logo-image" />
+            <span className="logo-text">DYOR</span>
+          </Link>
           <nav className="site-nav">
             <Link to="/" className="">Home</Link>
             <Link to="/docs" className="active">Documentation</Link>
@@ -436,6 +439,9 @@ function Documentation() {
 
       <footer className="app-footer">
         <div className="app-footer-content">
+          <div className="app-footer-logo">
+            <img src="/logo.png" alt="DYOR" className="footer-logo-image" />
+          </div>
           <div className="app-footer-links">
             <Link to="/">Home</Link>
             <Link to="/docs">Documentation</Link>

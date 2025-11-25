@@ -195,7 +195,10 @@ function AppContent() {
     <div className="app">
       <header className="site-header">
         <div className="site-header-content">
-          <Link to="/" className="logo-text-header">DYOR</Link>
+          <Link to="/" className="logo">
+            <img src="/logo.png" alt="DYOR" className="logo-image" />
+            <span className="logo-text">DYOR</span>
+          </Link>
           <nav className="site-nav">
             <Link to="/" className={location.pathname === '/' ? 'active' : ''}>Home</Link>
             <Link to="/docs" className={location.pathname === '/docs' ? 'active' : ''}>Documentation</Link>
