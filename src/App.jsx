@@ -82,24 +82,110 @@ function AppContent() {
     setLoading(true);
     setErrorMsg("");
     setResult(null);
+    
     try {
-      const res = await fetch("/api/scan", {
+      const response = await fetch("/api/scan-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contractAddress }),
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        const errorMessage = err.message || err.error || `Scan failed (${res.status})`;
-        throw new Error(errorMessage);
+      if (!response.ok) {
+        throw new Error(`Scan failed (${response.status})`);
       }
 
-      const data = await res.json();
-      setResult(data);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let partialResult = { _streaming: true };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const { type, data } = JSON.parse(line.slice(6));
+              
+              switch (type) {
+                case "status":
+                  setLoadingMessage(data.message);
+                  break;
+                case "tokenInfo":
+                  partialResult = { ...partialResult, ...data };
+                  setResult({ ...partialResult });
+                  break;
+                case "marketData":
+                  partialResult.marketData = data;
+                  setResult({ ...partialResult });
+                  break;
+                case "securityData":
+                  partialResult.securityData = data;
+                  setResult({ ...partialResult });
+                  break;
+                case "fundamentals":
+                  partialResult.fundamentals = data;
+                  setResult({ ...partialResult });
+                  break;
+                case "socials":
+                  partialResult.socials = data;
+                  setResult({ ...partialResult });
+                  break;
+                case "twitterData":
+                  partialResult.twitterData = data;
+                  setResult({ ...partialResult });
+                  break;
+                case "tickerTweets":
+                  partialResult.tickerTweets = data;
+                  setResult({ ...partialResult });
+                  break;
+                case "sentimentScore":
+                  partialResult.sentimentScore = data.sentimentScore;
+                  setResult({ ...partialResult });
+                  break;
+                case "tokenScore":
+                  partialResult.tokenScore = data.tokenScore;
+                  setResult({ ...partialResult });
+                  break;
+                case "narrative":
+                  partialResult.narrativeClaim = data.narrativeClaim;
+                  setResult({ ...partialResult });
+                  break;
+                case "summary":
+                  partialResult.summary = data.summary;
+                  setResult({ ...partialResult });
+                  break;
+                case "fundamentalsAnalysis":
+                  partialResult.fundamentalsAnalysis = data.fundamentalsAnalysis;
+                  setResult({ ...partialResult });
+                  break;
+                case "hypeAnalysis":
+                  partialResult.hypeAnalysis = data.hypeAnalysis;
+                  setResult({ ...partialResult });
+                  break;
+                case "complete":
+                  partialResult._streaming = false;
+                  partialResult.tokenScore = data.tokenScore || partialResult.tokenScore;
+                  setResult({ ...partialResult });
+                  break;
+                case "error":
+                  throw new Error(data.message);
+              }
+            } catch (parseErr) {
+              console.warn("Parse error:", parseErr);
+            }
+          }
+        }
+      }
     } catch (err) {
       console.error("Scan error:", err);
       setErrorMsg(err.message || "Something went wrong. Please try again.");
+      setResult(null);
     } finally {
       setLoading(false);
     }

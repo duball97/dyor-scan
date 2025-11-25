@@ -2,6 +2,20 @@ import React, { useState } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
+// Loading indicator for streaming sections
+function SectionLoader({ text = "Generating..." }) {
+  return (
+    <div className="section-loader">
+      <div className="loader-dots">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <span className="loader-text">{text}</span>
+    </div>
+  );
+}
+
 function Pill({ verdict }) {
   const color =
     verdict === "CONFIRMED"
@@ -126,6 +140,7 @@ function ScanResult({ result }) {
     entities,
     cached,
     marketData,
+    _streaming = false, // Flag indicating if still streaming
     socials,
     securityData,
     confidence,
@@ -379,10 +394,10 @@ function ScanResult({ result }) {
         </button>
       </div>
 
-      {/* Analysis Sections */}
-      {summary && (
-        <div className="analysis-section summary-section">
-          <h3 className="analysis-section-title">SUMMARY</h3>
+      {/* Analysis Sections - Show loading states when streaming */}
+      <div className="analysis-section summary-section">
+        <h3 className="analysis-section-title">SUMMARY</h3>
+        {summary ? (
           <div className="analysis-text">
             {summary.split('\n').map((line, idx) => {
               const trimmed = line.trim();
@@ -403,22 +418,28 @@ function ScanResult({ result }) {
               );
             })}
           </div>
-        </div>
-      )}
+        ) : _streaming ? (
+          <SectionLoader text="Generating summary..." />
+        ) : null}
+      </div>
 
-      {fundamentalsAnalysis && (
-        <div className="analysis-section fundamentals-section">
-          <h3 className="analysis-section-title">FUNDAMENTALS</h3>
+      <div className="analysis-section fundamentals-section">
+        <h3 className="analysis-section-title">FUNDAMENTALS</h3>
+        {fundamentalsAnalysis ? (
           <p className="analysis-text">{renderWithBold(fundamentalsAnalysis)}</p>
-        </div>
-      )}
+        ) : _streaming ? (
+          <SectionLoader text="Analyzing fundamentals..." />
+        ) : null}
+      </div>
 
-      {hypeAnalysis && (
-        <div className="analysis-section hype-section">
-          <h3 className="analysis-section-title">HYPE</h3>
+      <div className="analysis-section hype-section">
+        <h3 className="analysis-section-title">HYPE</h3>
+        {hypeAnalysis ? (
           <p className="analysis-text">{renderWithBold(hypeAnalysis)}</p>
-        </div>
-      )}
+        ) : _streaming ? (
+          <SectionLoader text="Analyzing market sentiment..." />
+        ) : null}
+      </div>
 
       {/* Legacy support for old cached results */}
       {!summary && !fundamentalsAnalysis && !hypeAnalysis && notesForUser && (
@@ -566,6 +587,19 @@ function ScanResult({ result }) {
       )}
 
       {/* X Posts About Token */}
+      {_streaming && !tickerTweets && (
+        <div className="result-section">
+          <h3>Recent X Posts About {symbol}</h3>
+          <div className="section-loader">
+            <div className="loader-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <span className="loader-text">Fetching tweets...</span>
+          </div>
+        </div>
+      )}
       {tickerTweets && tickerTweets.tweets && tickerTweets.tweets.length > 0 && (
         <div className="result-section">
           <h3>Recent X Posts About {symbol}</h3>
@@ -604,6 +638,19 @@ function ScanResult({ result }) {
       )}
 
       {/* X Posts from Token Profile */}
+      {_streaming && !twitterData && socials?.x && (
+        <div className="result-section">
+          <h3>Recent X Posts from Profile</h3>
+          <div className="section-loader">
+            <div className="loader-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <span className="loader-text">Fetching profile tweets...</span>
+          </div>
+        </div>
+      )}
       {twitterData && twitterData.tweets && twitterData.tweets.length > 0 && (
         <div className="result-section">
           <h3>Recent X Posts from Profile</h3>

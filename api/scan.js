@@ -223,6 +223,51 @@ async function getRugCheckData(contractAddress) {
   }
 }
 
+// Fetch token holders from Solscan
+async function getSolscanHolders(mint) {
+  const startTime = Date.now();
+  console.log(`[Solscan] Starting fetch for holders: ${mint}`);
+  
+  try {
+    // Solscan public API endpoint for token holders
+    const url = `https://public-api.solscan.io/token/holders?tokenAddress=${mint}&offset=0&size=1`;
+    
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+      8000
+    );
+
+    if (!response.ok) {
+      console.log(`[Solscan] Request failed: ${response.status}`);
+      return null;
+    }
+
+    const json = await response.json();
+    
+    // Solscan returns total count in the response
+    const holderCount = json?.total || null;
+    
+    const duration = Date.now() - startTime;
+    if (holderCount !== null) {
+      console.log(`[Solscan] ✅ Success: ${holderCount} holders - ${duration}ms`);
+    } else {
+      console.log(`[Solscan] No holder count in response - ${duration}ms`);
+    }
+    
+    return holderCount;
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[Solscan] ❌ Failed after ${duration}ms:`, err.message);
+    return null;
+  }
+}
+
 // Fetch on-chain fundamentals from Helius
 async function getHeliusFundamentals(mint) {
   const startTime = Date.now();
@@ -361,8 +406,9 @@ async function getBirdeyeData(mint) {
 function computeMarketSentiment(birdeye, dex, tickerTweets, twitterData) {
   let priceChange = 0;
   let volume = 0;
-  let hasSocialActivity = false;
-  let socialEngagement = 0;
+  let totalTweets = 0;
+  let totalEngagement = 0;
+  let highEngagementTweets = 0;
 
   // Use Birdeye if available, otherwise fall back to DexScreener
   if (birdeye) {
@@ -374,55 +420,76 @@ function computeMarketSentiment(birdeye, dex, tickerTweets, twitterData) {
   }
 
   // Factor in social activity (tweets, engagement)
-  if (tickerTweets && tickerTweets.tweets && tickerTweets.tweets.length > 0) {
-    hasSocialActivity = true;
-    // Calculate average engagement from tweets
-    const totalEngagement = tickerTweets.tweets.reduce((sum, tweet) => {
-      const likes = parseInt(tweet.likes) || 0;
-      const retweets = parseInt(tweet.retweets) || 0;
-      return sum + likes + (retweets * 2); // Retweets weighted more
-    }, 0);
-    socialEngagement = totalEngagement / tickerTweets.tweets.length;
+  const allTweets = [
+    ...(tickerTweets?.tweets || []),
+    ...(twitterData?.tweets || [])
+  ];
+  
+  if (allTweets.length > 0) {
+    totalTweets = allTweets.length;
+    allTweets.forEach(tweet => {
+      const likes = parseInt(tweet.likes || tweet.likeCount || 0);
+      const retweets = parseInt(tweet.retweets || tweet.retweetCount || 0);
+      const engagement = likes + (retweets * 2);
+      totalEngagement += engagement;
+      if (engagement > 50) highEngagementTweets++;
+    });
   }
 
-  if (twitterData && twitterData.tweets && twitterData.tweets.length > 0) {
-    hasSocialActivity = true;
-  }
-
-  // If no market data at all, return null
-  if (!birdeye && !dex) {
+  // If no market data at all, but we have tweets, use tweet-based sentiment
+  if (!birdeye && !dex && totalTweets === 0) {
     return null;
   }
 
-  // Normalize market metrics
-  const priceScore = Math.max(0, Math.min(1, (priceChange + 50) / 100));
-  const volumeScore = Math.max(0, Math.min(1, Math.log10(volume + 1) / 8)); // Adjusted for larger volumes
+  // Calculate component scores (0-1 scale)
   
-  // Social activity score (0-0.3 weight)
+  // Price momentum: -50% to +50% maps to 0-1, with bonus for positive
+  let priceScore = 0.5; // neutral baseline
+  if (priceChange !== 0) {
+    priceScore = Math.max(0, Math.min(1, (priceChange + 30) / 60));
+    // Bonus for strong positive momentum
+    if (priceChange > 10) priceScore = Math.min(1, priceScore + 0.1);
+  }
+
+  // Volume score: logarithmic scale, higher volume = higher score
+  let volumeScore = 0.3; // baseline
+  if (volume > 0) {
+    volumeScore = Math.max(0.2, Math.min(1, Math.log10(volume) / 7));
+  }
+  
+  // Social engagement score: based on tweets + engagement quality
   let socialScore = 0;
-  if (hasSocialActivity) {
-    if (socialEngagement > 0) {
-      // Higher engagement = higher score
-      socialScore = Math.min(0.3, Math.log10(socialEngagement + 1) / 5);
-    } else {
-      // Just having tweets is positive
-      socialScore = 0.15;
-    }
+  if (totalTweets > 0) {
+    const avgEngagement = totalEngagement / totalTweets;
+    
+    // Tweet count contribution (more tweets = more buzz)
+    const tweetCountScore = Math.min(0.3, totalTweets * 0.03);
+    
+    // Engagement quality (avg engagement per tweet)
+    const engagementScore = Math.min(0.4, Math.log10(avgEngagement + 1) / 3);
+    
+    // High-engagement tweets bonus (viral potential)
+    const viralScore = Math.min(0.3, highEngagementTweets * 0.06);
+    
+    socialScore = tweetCountScore + engagementScore + viralScore;
   }
 
-  // Calculate sentiment (price + volume + social)
-  const sentiment =
-    0.4 * priceScore +
-    0.3 * volumeScore +
-    0.3 * socialScore;
+  // Calculate weighted sentiment
+  // Weight distribution: Price 25%, Volume 25%, Social 50% (social is key for memecoins)
+  const sentiment = (0.25 * priceScore) + (0.25 * volumeScore) + (0.5 * socialScore);
 
-  // Ensure minimum of 20 if there's any activity
-  const finalSentiment = Math.round(sentiment * 100);
-  if (hasSocialActivity && finalSentiment < 20) {
-    return 20; // Minimum sentiment if there's social activity
+  // Scale to 0-100 and apply minimum thresholds
+  let finalSentiment = Math.round(sentiment * 100);
+  
+  // Minimum scores based on activity
+  if (totalTweets > 0) {
+    if (highEngagementTweets >= 3) finalSentiment = Math.max(finalSentiment, 55);
+    else if (totalTweets >= 5) finalSentiment = Math.max(finalSentiment, 40);
+    else finalSentiment = Math.max(finalSentiment, 30);
   }
-
-  return finalSentiment; // 0–100 score
+  
+  // Cap at 100
+  return Math.min(100, finalSentiment);
 }
 
 // Calculate comprehensive token score (1-100)
@@ -1078,15 +1145,16 @@ async function getTokenData(contractAddress) {
   
   try {
     // Fetch data from multiple sources in parallel
-    console.log(`[TokenData] Fetching from 4 sources: DexScreener, RugCheck, Helius, Birdeye`);
+    console.log(`[TokenData] Fetching from 5 sources: DexScreener, RugCheck, Helius, Birdeye, Solscan`);
     const fetchStart = Date.now();
     
-    const [dexData, rugData, heliusData, birdeyeData] =
+    const [dexData, rugData, heliusData, birdeyeData, solscanData] =
       await Promise.allSettled([
       getDexScreenerData(contractAddress),
       getRugCheckData(contractAddress),
         getHeliusFundamentals(contractAddress),
         getBirdeyeData(contractAddress),
+        getSolscanHolders(contractAddress),
       ]);
 
     const fetchDuration = Date.now() - fetchStart;
@@ -1096,8 +1164,13 @@ async function getTokenData(contractAddress) {
     const rug = rugData.status === "fulfilled" ? rugData.value : null;
     const helius = heliusData.status === "fulfilled" ? heliusData.value : null;
     const birdeye = birdeyeData.status === "fulfilled" ? birdeyeData.value : null;
+    const solscanHolders = solscanData.status === "fulfilled" ? solscanData.value : null;
 
-    console.log(`[TokenData] Results: DexScreener=${!!dex}, RugCheck=${!!rug}, Helius=${!!helius}, Birdeye=${!!birdeye}`);
+    // Use Solscan holders if available, otherwise fall back to Helius
+    const holderCount = solscanHolders || helius?.holderCount || null;
+
+    console.log(`[TokenData] Results: DexScreener=${!!dex}, RugCheck=${!!rug}, Helius=${!!helius}, Birdeye=${!!birdeye}, Solscan=${solscanHolders !== null}`);
+    console.log(`[TokenData] Holders: ${holderCount} (Solscan: ${solscanHolders}, Helius: ${helius?.holderCount})`);
     
     if (dexData.status === "rejected") {
       console.error(`[TokenData] DexScreener failed:`, dexData.reason);
@@ -1110,6 +1183,9 @@ async function getTokenData(contractAddress) {
     }
     if (birdeyeData.status === "rejected") {
       console.error(`[TokenData] Birdeye failed:`, birdeyeData.reason);
+    }
+    if (solscanData.status === "rejected") {
+      console.error(`[TokenData] Solscan failed:`, solscanData.reason);
     }
     
     const socials = dex?.socials || null;
@@ -1227,7 +1303,8 @@ Sentiment Score: ${sentimentScore || "N/A"}
       },
       fundamentals: {
         ...helius,
-        holders: helius?.holderCount || null, // Make sure holders is accessible
+        holderCount: holderCount, // Use Solscan or Helius holder count
+        holders: holderCount, // Alias for compatibility
       },
       birdeye,
       sentimentScore,
@@ -1552,35 +1629,58 @@ async function generateSummary({ narrativeClaim, verdict, tokenData, tokenName }
   try {
     const score = tokenData?.tokenScore || 50;
     const sentiment = tokenData?.sentimentScore || 50;
+    const holders = tokenData?.fundamentals?.holderCount || null;
+    const liquidity = tokenData?.marketData?.liquidity || null;
+    const volume24h = tokenData?.marketData?.volume24h || null;
+    const priceChange = tokenData?.marketData?.priceChange24h || null;
+    
+    // Format tweet data for analysis
+    const tickerTweets = tokenData?.tickerTweets?.tweets || [];
+    const twitterData = tokenData?.twitterData?.tweets || [];
+    const allTweets = [...tickerTweets, ...twitterData].slice(0, 10); // Limit to 10 most recent
+    
+    let tweetContext = "";
+    if (allTweets.length > 0) {
+      const tweetSummaries = allTweets.map((tweet, idx) => {
+        const text = tweet.text || tweet.content || "";
+        const likes = tweet.likes || tweet.likeCount || 0;
+        const retweets = tweet.retweets || tweet.retweetCount || 0;
+        return `${idx + 1}. "${text.substring(0, 150)}..." (${likes} likes, ${retweets} retweets)`;
+      }).join("\n");
+      tweetContext = `\n\nRECENT TWEETS ABOUT THIS TOKEN:\n${tweetSummaries}`;
+    }
+    
+    // Build data section dynamically - only include available data
+    const dataLines = [`- Score: ${score}/100`, `- Sentiment: ${sentiment}/100`];
+    if (holders) dataLines.push(`- Holders: ${holders.toLocaleString()}`);
+    if (liquidity) dataLines.push(`- Liquidity: $${(liquidity / 1000000).toFixed(2)}M`);
+    if (volume24h) dataLines.push(`- 24h Volume: $${(volume24h / 1000000).toFixed(2)}M`);
+    if (priceChange !== null) dataLines.push(`- 24h Price Change: ${priceChange > 0 ? "+" : ""}${priceChange.toFixed(2)}%`);
+    if (narrativeClaim) dataLines.push(`- Narrative: ${narrativeClaim}`);
     
     const prompt = `
-You are a professional cryptocurrency analyst. Provide a concise summary for ${tokenName || "this token"}.
+You are an expert cryptocurrency analyst. Provide an insightful summary for ${tokenName || "this token"}.
 
 Format EXACTLY as follows:
-1. Two sentences (2-3 lines total) - focus on unique aspects, key metrics, and notable opportunities or concerns. Use **bold** for the most important information.
-2. Three one-line bullet points (each bullet point must be a single line) - use **bold** for key metrics, scores, or critical information
+1. Two sentences - analyze what makes this token unique based on the data provided. Use **bold** for key insights.
+2. Three bullet points - one line each, use **bold** for key metrics
 
-Context:
-- Narrative: ${narrativeClaim}
-- Score: ${score}/100
-- Sentiment: ${sentiment}/100
-${verdict !== "UNVERIFIED" ? `- Verdict: ${verdict}` : ""}
+AVAILABLE DATA:
+${dataLines.join('\n')}${tweetContext}
 
-CRITICAL: Do NOT mention obvious facts like "uses Solana blockchain" or generic blockchain features. Do NOT mention "UNVERIFIED" status. Focus on:
-- What makes this token unique or notable
-- Key metrics and scores that stand out
-- Notable opportunities or concerns
-- Market activity and community engagement
+CRITICAL RULES:
+- ONLY analyze data that is provided above - DO NOT mention missing data or say "unknown"
+- NEVER mention "Solana blockchain" or "uses Solana" - obvious
+- NEVER mention "UNVERIFIED" status
+- Focus on what the available data reveals, not what's missing
+- Provide actionable insights based on actual metrics
 
 Structure:
-[Two sentences with **bold** for important info - avoid obvious statements]
+[Two sentences with **bold** for insights]
 
-• [First bullet point - one line only, use **bold** for key terms]
-• [Second bullet point - one line only, use **bold** for key terms]
-• [Third bullet point - one line only, use **bold** for key terms]
-
-Use markdown **bold** syntax for: scores, critical metrics, risk levels, and key findings.
-Keep each bullet point to a single line. Be concise and factual. Avoid stating obvious or generic information. Focus on what makes this token interesting or concerning based on actual data.
+• [Bullet 1 - one line, **bold** key terms]
+• [Bullet 2 - one line, **bold** key terms]
+• [Bullet 3 - one line, **bold** key terms]
 `;
 
     console.log(`[Summary] Calling OpenAI...`);
@@ -1588,7 +1688,7 @@ Keep each bullet point to a single line. Be concise and factual. Avoid stating o
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
-      max_tokens: 150,
+      max_tokens: 250,
     });
 
     const text = completion.choices[0]?.message?.content?.trim();
@@ -1616,23 +1716,27 @@ async function generateFundamentals({ tokenData, verdict, reasoning }) {
     const hasFreezeAuth = tokenData?.fundamentals?.freezeAuthority || null;
     const risks = tokenData?.securityData?.risks?.length || 0;
     
+    // Build data section dynamically - only include available data
+    const fundDataLines = [`- Score: ${score}/100`];
+    if (holders) fundDataLines.push(`- Holders: ${holders.toLocaleString()}`);
+    if (liquidity) fundDataLines.push(`- Liquidity: $${(liquidity / 1000000).toFixed(2)}M`);
+    if (volume24h) fundDataLines.push(`- Volume (24h): $${(volume24h / 1000000).toFixed(2)}M`);
+    fundDataLines.push(`- Security: ${!hasMintAuth && !hasFreezeAuth ? "✓ Clean (no mint/freeze)" : "⚠ " + (hasMintAuth ? "Mint authority" : "") + (hasFreezeAuth ? " Freeze authority" : "")}`);
+    if (risks > 0) fundDataLines.push(`- Risk flags: ${risks}`);
+    
     const prompt = `
-Analyze the fundamental metrics for this token. Provide a concise assessment in 2 sentences maximum.
+Analyze token fundamentals. Provide insights in 2 sentences max.
 
-DATA:
-- Score: ${score}/100
-- Holders: ${holders || "unknown"}
-- Liquidity: ${liquidity ? `$${(liquidity / 1000).toFixed(0)}K` : "unknown"}
-- Volume (24h): ${volume24h ? `$${(volume24h / 1000).toFixed(0)}K` : "unknown"}
-- Security: ${!hasMintAuth && !hasFreezeAuth ? "✓ Clean (no mint/freeze authority)" : "⚠ " + (hasMintAuth ? "Mint authority present" : "") + (hasFreezeAuth ? " Freeze authority present" : "")}
-- Risk flags: ${risks}
-${verdict !== "UNVERIFIED" ? `- Verdict: ${verdict}` : ""}
+AVAILABLE DATA:
+${fundDataLines.join('\n')}
 
-CRITICAL: Be extremely concise. Focus only on what stands out - concerning metrics, security issues, or notable strengths. Skip obvious statements. Do NOT mention "UNVERIFIED" status.
+RULES:
+- ONLY discuss data provided above - never mention missing/unknown data
+- NEVER mention "Solana" or blockchain basics
+- Use **bold** for key metrics and conclusions
+- Connect the metrics - what do they reveal together?
 
-Use markdown **bold** syntax for: specific numbers/metrics, security status, risk levels, and key conclusions.
-
-Tone: Professional, analytical, and objective. Maximum 2 sentences. Focus on actual metrics and data.
+Provide 2 concise, insightful sentences.
 `;
 
     console.log(`[Fundamentals] Calling OpenAI...`);
@@ -1640,7 +1744,7 @@ Tone: Professional, analytical, and objective. Maximum 2 sentences. Focus on act
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
-      max_tokens: 100,
+      max_tokens: 150,
     });
 
     const text = completion.choices[0]?.message?.content?.trim();
@@ -1663,24 +1767,61 @@ async function generateHype({ tokenData, narrativeClaim }) {
     const sentiment = tokenData?.sentimentScore || 50;
     const volume24h = tokenData?.marketData?.volume24h || null;
     const priceChange = tokenData?.marketData?.priceChange24h || null;
-    const hasTwitter = !!tokenData?.twitterData;
-    const hasTelegram = !!tokenData?.telegramData;
+    const holders = tokenData?.fundamentals?.holderCount || null;
+    const liquidity = tokenData?.marketData?.liquidity || null;
+    
+    // Format tweet data for deep analysis
+    const tickerTweets = tokenData?.tickerTweets?.tweets || [];
+    const twitterData = tokenData?.twitterData?.tweets || [];
+    const allTweets = [...tickerTweets, ...twitterData].slice(0, 15); // Analyze up to 15 tweets
+    
+    let tweetAnalysis = "";
+    if (allTweets.length > 0) {
+      const totalEngagement = allTweets.reduce((sum, tweet) => {
+        const likes = parseInt(tweet.likes || tweet.likeCount || 0);
+        const retweets = parseInt(tweet.retweets || tweet.retweetCount || 0);
+        return sum + likes + (retweets * 2);
+      }, 0);
+      const avgEngagement = Math.round(totalEngagement / allTweets.length);
+      const highEngagementTweets = allTweets.filter(tweet => {
+        const likes = parseInt(tweet.likes || tweet.likeCount || 0);
+        const retweets = parseInt(tweet.retweets || tweet.retweetCount || 0);
+        return (likes + retweets) > 50;
+      }).length;
+      
+      const tweetTexts = allTweets.map(t => (t.text || t.content || "").substring(0, 100)).join(" | ");
+      
+      tweetAnalysis = `
+TWEET ANALYSIS:
+- Total tweets analyzed: ${allTweets.length}
+- Average engagement per tweet: ${avgEngagement} (likes + retweets)
+- High-engagement tweets (>50 interactions): ${highEngagementTweets}
+- Tweet content themes: ${tweetTexts.substring(0, 500)}...
+`;
+    }
+    
+    // Build data section dynamically - only include available data
+    const hypeDataLines = [`- Sentiment score: ${sentiment}/100`];
+    if (volume24h) hypeDataLines.push(`- 24h volume: $${(volume24h / 1000000).toFixed(2)}M`);
+    if (priceChange !== null) hypeDataLines.push(`- Price change (24h): ${priceChange > 0 ? "+" : ""}${priceChange.toFixed(2)}%`);
+    if (holders) hypeDataLines.push(`- Holders: ${holders.toLocaleString()}`);
+    if (liquidity) hypeDataLines.push(`- Liquidity: $${(liquidity / 1000000).toFixed(2)}M`);
+    if (narrativeClaim) hypeDataLines.push(`- Narrative: ${narrativeClaim.substring(0, 150)}...`);
     
     const prompt = `
-Assess the market sentiment and community activity for this token. Provide a concise analysis in 1-2 sentences maximum.
+Assess market sentiment and community hype for this token. Provide analysis in 2 sentences max.
 
-DATA:
-- Sentiment score: ${sentiment}/100
-- 24h volume: ${volume24h ? `$${(volume24h / 1000).toFixed(0)}K` : "unknown"}
-- Price change (24h): ${priceChange !== null ? `${priceChange > 0 ? "+" : ""}${priceChange.toFixed(2)}%` : "unknown"}
-- Social presence: ${hasTwitter ? "✓ Twitter" : "✗ Twitter"}, ${hasTelegram ? "✓ Telegram" : "✗ Telegram"}
-- Narrative: ${narrativeClaim.substring(0, 100)}...
+AVAILABLE DATA:
+${hypeDataLines.join('\n')}${tweetAnalysis}
 
-CRITICAL: Be extremely concise. Focus only on notable price movements, volume spikes, or concerning lack of activity. Skip obvious statements.
+RULES:
+- ONLY discuss data provided - never mention missing/unknown data
+- NEVER mention "Solana" or blockchain basics
+- Use **bold** for sentiment scores, volumes, price changes, engagement metrics
+- If tweet data is provided, analyze engagement quality and community momentum
+- Connect social signals to market behavior
 
-Use markdown **bold** syntax for: sentiment scores, volume numbers, price changes, and key conclusions about market activity.
-
-Tone: Professional and objective. Maximum 2 sentences. Be direct and avoid filler.
+Provide 2 concise, insightful sentences about hype and momentum.
 `;
 
     console.log(`[Hype] Calling OpenAI...`);
@@ -1688,7 +1829,7 @@ Tone: Professional and objective. Maximum 2 sentences. Be direct and avoid fille
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
-      max_tokens: 80,
+      max_tokens: 180,
     });
 
     const text = completion.choices[0]?.message?.content?.trim();
