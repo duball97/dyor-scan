@@ -1955,6 +1955,38 @@ body::before {
   gap: 8px;
 }
 
+.score-loading {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-loading .loader-dots {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-loading .loader-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  animation: loaderPulse 1.4s ease-in-out infinite;
+}
+
+.score-loading .loader-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.score-loading .loader-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
 .score-circle-container {
   position: relative;
   width: 100px;

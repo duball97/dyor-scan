@@ -362,10 +362,21 @@ function ScanResult({ result }) {
           <p className="ca">{contractAddress}</p>
         </div>
         <div className="result-header-aside">
-          {tokenScore !== undefined && tokenScore !== null && (
+          {tokenScore !== undefined && tokenScore !== null ? (
             <div className="score-display">
               <ScoreCircle score={tokenScore} />
               <span className="score-label-text">Overall Score</span>
+            </div>
+          ) : (
+            <div className="score-display">
+              <div className="score-loading">
+                <div className="loader-dots">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+              <span className="score-label-text">Calculating Score...</span>
             </div>
           )}
           <div className="verdict-block">

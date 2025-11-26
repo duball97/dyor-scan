@@ -645,98 +645,173 @@ function computeMarketSentiment(birdeye, dex, tickerTweets, twitterData) {
 
 // Calculate comprehensive token score (1-100)
 function calculateTokenScore(tokenData) {
-  let score = 50; // Start at neutral
+  let score = 30; // Start lower - be more conservative
   
-  const { marketData, fundamentals, securityData, socials, sentimentScore } = tokenData;
+  const { marketData, fundamentals, securityData, socials, sentimentScore, blockchain } = tokenData;
   
-  // Liquidity Score (0-20 points)
+  // CRITICAL: Low liquidity is a major red flag - penalize heavily
   if (marketData?.liquidity) {
     const liquidity = marketData.liquidity;
-    if (liquidity > 1000000) score += 15; // >$1M
-    else if (liquidity > 500000) score += 12; // >$500K
-    else if (liquidity > 100000) score += 8; // >$100K
-    else if (liquidity > 50000) score += 5; // >$50K
-    else if (liquidity > 10000) score += 3; // >$10K
+    if (liquidity > 1000000) score += 12; // >$1M
+    else if (liquidity > 500000) score += 10; // >$500K
+    else if (liquidity > 100000) score += 7; // >$100K
+    else if (liquidity > 50000) score += 4; // >$50K
+    else if (liquidity > 10000) score += 2; // >$10K
+    else if (liquidity > 5000) score += 1; // >$5K
+    else {
+      // Very low liquidity = major red flag
+      score -= 15;
+    }
   } else {
-    score -= 10; // No liquidity is bad
+    score -= 20; // No liquidity = very bad
   }
   
-  // Holder Count Score (0-15 points)
+  // Holder Count Score - be stricter
   if (fundamentals?.holderCount) {
     const holders = fundamentals.holderCount;
-    if (holders > 10000) score += 15;
-    else if (holders > 5000) score += 12;
-    else if (holders > 1000) score += 10;
-    else if (holders > 500) score += 7;
-    else if (holders > 100) score += 5;
-    else if (holders > 50) score += 3;
+    if (holders > 10000) score += 10;
+    else if (holders > 5000) score += 8;
+    else if (holders > 1000) score += 6;
+    else if (holders > 500) score += 4;
+    else if (holders > 100) score += 2;
+    else if (holders > 50) score += 1;
+    else {
+      // Very few holders = red flag
+      score -= 10;
+    }
   } else {
-    score -= 5;
+    score -= 8; // Missing holder data = suspicious
   }
   
-  // Market Cap / Supply Score (0-10 points)
+  // Market Cap / Supply Score - require substantial market cap
   if (fundamentals?.supply && marketData?.price) {
     const supply = parseInt(fundamentals.supply) || 0;
     const price = parseFloat(marketData.price) || 0;
-    const marketCap = (supply * price) / Math.pow(10, fundamentals.decimals || 9);
+    const decimals = fundamentals.decimals || (blockchain === "bnb" ? 18 : 9);
+    const marketCap = (supply * price) / Math.pow(10, decimals);
     
-    if (marketCap > 10000000) score += 10; // >$10M
-    else if (marketCap > 1000000) score += 8; // >$1M
-    else if (marketCap > 100000) score += 6; // >$100K
-    else if (marketCap > 10000) score += 4; // >$10K
-    else if (marketCap > 1000) score += 2;
+    if (marketCap > 10000000) score += 8; // >$10M
+    else if (marketCap > 1000000) score += 6; // >$1M
+    else if (marketCap > 100000) score += 4; // >$100K
+    else if (marketCap > 10000) score += 2; // >$10K
+    else if (marketCap > 1000) score += 1;
+    else {
+      // Very low market cap = red flag
+      score -= 5;
+    }
+  } else {
+    score -= 5; // Missing market cap data
   }
   
-  // Security Score (0-15 points)
+  // Security Score - CRITICAL for safety
   if (securityData) {
     if (!securityData.risks || securityData.risks.length === 0) {
-      score += 15; // No risks = good
+      score += 10; // No risks = good (reduced from 15)
     } else {
       const highRisks = securityData.risks.filter(r => r.level === 'high').length;
       const mediumRisks = securityData.risks.filter(r => r.level === 'medium').length;
       
-      score -= highRisks * 5; // Each high risk = -5
-      score -= mediumRisks * 2; // Each medium risk = -2
+      // Heavier penalties for risks
+      score -= highRisks * 15; // Each high risk = -15 (was -5)
+      score -= mediumRisks * 8; // Each medium risk = -8 (was -2)
       
-      // Check for rug risks
-      if (fundamentals?.mintAuthority === null || fundamentals?.freezeAuthority === null) {
-        score += 5; // No mint/freeze authority = good
-      }
-      if (fundamentals?.mintAuthority) {
-        score -= 8; // Has mint authority = risk
-      }
-      if (fundamentals?.freezeAuthority) {
-        score -= 8; // Has freeze authority = risk
+      // Mint/Freeze authority checks (Solana-specific)
+      if (blockchain === "solana") {
+        if (fundamentals?.mintAuthority === null && fundamentals?.freezeAuthority === null) {
+          score += 3; // No mint/freeze authority = good (reduced from 5)
+        }
+        if (fundamentals?.mintAuthority) {
+          score -= 15; // Has mint authority = MAJOR risk (was -8)
+        }
+        if (fundamentals?.freezeAuthority) {
+          score -= 15; // Has freeze authority = MAJOR risk (was -8)
+        }
       }
     }
   } else {
-    score -= 3; // No security data = unknown
+    // For BNB tokens, securityData is null (RugCheck doesn't support it)
+    if (blockchain === "bnb") {
+      score -= 5; // Penalty for missing security data on BNB (increased from 1)
+    } else {
+      score -= 10; // No security data = very suspicious (increased from 3)
+    }
   }
   
-  // Social Presence Score (0-10 points)
+  // Social Presence Score - require real presence
   if (socials) {
     let socialCount = 0;
     if (socials.website) socialCount++;
     if (socials.x) socialCount++;
     if (socials.telegram) socialCount++;
-    score += socialCount * 3;
+    if (socialCount >= 3) score += 5; // All 3 = good
+    else if (socialCount === 2) score += 3;
+    else if (socialCount === 1) score += 1;
   } else {
-    score -= 5;
+    score -= 8; // No socials = suspicious (increased from 5)
   }
   
-  // Volume/Activity Score (0-10 points)
+  // Volume/Activity Score - require substantial volume
   if (marketData?.volume24h) {
     const volume = marketData.volume24h;
-    if (volume > 1000000) score += 10; // >$1M
-    else if (volume > 500000) score += 8;
-    else if (volume > 100000) score += 6;
-    else if (volume > 50000) score += 4;
-    else if (volume > 10000) score += 2;
+    if (volume > 1000000) score += 8; // >$1M
+    else if (volume > 500000) score += 6;
+    else if (volume > 100000) score += 4;
+    else if (volume > 50000) score += 2;
+    else if (volume > 10000) score += 1;
+    else {
+      // Very low volume = red flag
+      score -= 5;
+    }
+  } else {
+    score -= 5; // No volume data
   }
   
-  // Sentiment Score (0-10 points)
+  // Sentiment Score - reduced weight
   if (sentimentScore !== null && sentimentScore !== undefined) {
-    score += (sentimentScore / 100) * 10;
+    score += (sentimentScore / 100) * 8; // Reduced from 10
+  } else {
+    score -= 3; // Missing sentiment
+  }
+  
+  // HARD CAPS: Prevent high scores for tokens with red flags
+  const liquidity = marketData?.liquidity || 0;
+  const holders = fundamentals?.holderCount || 0;
+  const hasRisks = securityData?.risks?.length > 0;
+  const hasMintAuth = blockchain === "solana" && fundamentals?.mintAuthority;
+  const hasFreezeAuth = blockchain === "solana" && fundamentals?.freezeAuthority;
+  
+  // Cap at 60 if liquidity is too low
+  if (liquidity < 50000) {
+    score = Math.min(score, 60);
+  }
+  
+  // Cap at 50 if holders are too few
+  if (holders < 100) {
+    score = Math.min(score, 50);
+  }
+  
+  // Cap at 40 if there are security risks
+  if (hasRisks) {
+    score = Math.min(score, 40);
+  }
+  
+  // Cap at 30 if mint/freeze authority exists
+  if (hasMintAuth || hasFreezeAuth) {
+    score = Math.min(score, 30);
+  }
+  
+  // Require multiple strong indicators for scores above 70
+  const strongIndicators = [
+    liquidity > 100000,
+    holders > 1000,
+    !hasRisks,
+    !hasMintAuth && !hasFreezeAuth,
+    socials && (socials.website || socials.x || socials.telegram),
+    marketData?.volume24h > 100000
+  ].filter(Boolean).length;
+  
+  if (score > 70 && strongIndicators < 4) {
+    score = Math.min(score, 70); // Need at least 4 strong indicators for 70+
   }
   
   // Clamp between 1 and 100
@@ -1374,6 +1449,7 @@ async function getTokenData(contractAddress) {
       securityData: rug,
       socials,
       sentimentScore,
+      blockchain, // Include blockchain for proper BNB vs Solana handling
     };
     
     const tokenScore = calculateTokenScore(tokenScoreData);
