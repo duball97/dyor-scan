@@ -222,7 +222,7 @@ function AppContent() {
           <div className="hero-content">
             <div className="hero-badge">POWERED BY AI</div>
             <h1 className="hero-title">Verify Token Narratives<br/>Before You Invest</h1>
-            <p className="hero-subtitle">AI-powered analysis that extracts claims, identifies entities, and verifies narratives from Solana token data. Make informed decisions with real-time market intelligence.</p>
+            <p className="hero-subtitle">AI-powered analysis that extracts claims, identifies entities, and verifies narratives from Solana and BNB token data. Make informed decisions with real-time market intelligence.</p>
             
             <div className="hero-scanner">
               <ScanForm onScan={handleScan} loading={loading} />
@@ -341,7 +341,7 @@ function AppContent() {
           <div className="features-grid">
             <div className="feature-card">
               <h3>Market Data</h3>
-              <p>Real-time price, liquidity, and volume from DexScreener. Track 24h changes and trading metrics across all Solana DEXs.</p>
+              <p>Real-time price, liquidity, and volume from DexScreener. Track 24h changes and trading metrics across Solana and BNB DEXs.</p>
             </div>
             
             <div className="feature-card">
@@ -382,7 +382,7 @@ function AppContent() {
               <div className="step-number">01</div>
               <div className="step-content">
                 <h3>Enter Contract Address</h3>
-                <p>Paste any Solana token contract address into the scanner</p>
+                <p>Paste any Solana or BNB token contract address into the scanner</p>
               </div>
             </div>
             
@@ -457,7 +457,7 @@ function AppContent() {
           <div className="scan-container">
             <div className="scan-header">
               <h2 className="scan-title">Token Scanner</h2>
-              <p className="scan-subtitle">Enter a Solana contract address to analyze token claims, extract entities, and verify narratives</p>
+              <p className="scan-subtitle">Enter a Solana or BNB contract address to analyze token claims, extract entities, and verify narratives</p>
             </div>
             
             <ScanForm onScan={handleScan} loading={loading} />

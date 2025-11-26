@@ -32,13 +32,13 @@ function Documentation() {
         <div className="docs-container">
         <header className="docs-header">
           <h1>DYOR Scanner Documentation</h1>
-          <p className="docs-subtitle">AI-Powered Token Narrative Verification for Solana</p>
+          <p className="docs-subtitle">AI-Powered Token Narrative Verification for Solana & BNB</p>
         </header>
 
         <section className="docs-section">
           <h2>What is DYOR Scanner?</h2>
           <p>
-            DYOR Scanner is an <strong>AI-powered tool</strong> that analyzes <strong>Solana tokens</strong> to extract, verify, and classify their narratives. 
+            DYOR Scanner is an <strong>AI-powered tool</strong> that analyzes <strong>Solana and BNB tokens</strong> to extract, verify, and classify their narratives. 
             It helps investors make informed decisions by identifying what stories tokens are telling, whether those stories 
             reference <strong>real-world events</strong>, and what <strong>risks</strong> might be involved.
           </p>
@@ -56,7 +56,7 @@ function Documentation() {
             <div className="step-content-doc">
               <h3>Data Aggregation</h3>
               <p>
-                When you paste a Solana contract address, the scanner fetches data from multiple sources:
+                When you paste a Solana or BNB contract address, the scanner automatically detects the blockchain and fetches data from multiple sources:
               </p>
               <ul>
                 <li><strong>DexScreener</strong> - Real-time market data, prices, liquidity, volume, and social links</li>
@@ -217,13 +217,13 @@ function Documentation() {
           <div className="source-grid">
             <div className="source-card">
               <h3>DexScreener</h3>
-              <p><strong>Real-time market data</strong> including prices, liquidity, volume, and trading pairs across all Solana DEXs.</p>
+              <p><strong>Real-time market data</strong> including prices, liquidity, volume, and trading pairs across Solana and BNB DEXs.</p>
               <a href="https://dexscreener.com" target="_blank" rel="noopener noreferrer">Visit DexScreener →</a>
             </div>
             
             <div className="source-card">
               <h3>RugCheck</h3>
-              <p><strong>Security analysis and risk assessment</strong> for Solana tokens. Identifies <strong>potential vulnerabilities and scams</strong>.</p>
+              <p><strong>Security analysis and risk assessment</strong> for Solana tokens (BNB support coming soon). Identifies <strong>potential vulnerabilities and scams</strong>.</p>
               <a href="https://rugcheck.xyz" target="_blank" rel="noopener noreferrer">Visit RugCheck →</a>
             </div>
             
@@ -411,7 +411,7 @@ function Documentation() {
           <div className="faq-item">
             <h3>Can I use this for other blockchains?</h3>
             <p>
-              Currently, DYOR Scanner is optimized for <strong>Solana tokens</strong>. Support for other chains may be added in the future.
+              DYOR Scanner currently supports <strong>Solana and BNB/BSC tokens</strong>. The system automatically detects the blockchain from the contract address format and uses the appropriate data sources.
             </p>
           </div>
           

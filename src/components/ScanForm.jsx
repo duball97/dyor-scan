@@ -15,7 +15,7 @@ function ScanForm({ onScan, loading }) {
         Contract address
         <input
           type="text"
-          placeholder="Paste Solana CA..."
+          placeholder="Paste Solana or BNB contract address..."
           value={contractAddress}
           onChange={(e) => setContractAddress(e.target.value)}
         />

@@ -162,10 +162,34 @@ function formatScanResult(result) {
 }
 
 // Helper: Validate Solana address
-function validateSolanaAddress(address) {
-  if (!address || typeof address !== "string") return false;
+// Helper: Detect blockchain from address format
+function detectBlockchain(address) {
+  if (!address || typeof address !== "string") return null;
+  const trimmed = address.trim();
+  
+  // BNB/BSC addresses are Ethereum-style: 0x followed by 40 hex characters
+  if (/^0x[a-fA-F0-9]{40}$/.test(trimmed)) {
+    return "bnb";
+  }
+  
+  // Solana addresses are base58 encoded and typically 32-44 characters
   const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-  return base58Regex.test(address.trim());
+  if (base58Regex.test(trimmed)) {
+    return "solana";
+  }
+  
+  return null;
+}
+
+// Helper: Validate BNB/BSC address format
+function validateBNBAddress(address) {
+  if (!address || typeof address !== "string") return false;
+  return /^0x[a-fA-F0-9]{40}$/.test(address.trim());
+}
+
+// Helper: Validate any supported blockchain address
+function validateAddress(address) {
+  return validateSolanaAddress(address) || validateBNBAddress(address);
 }
 
 // Command: /start
@@ -176,17 +200,19 @@ bot.onText(/\/start/, (msg) => {
   const welcomeMessage = `
 👋 Welcome to *DYOR Scanner Bot*, ${firstName}!
 
-I analyze Solana tokens to help you make informed decisions.
+I analyze Solana and BNB tokens to help you make informed decisions.
 
 🔍 *How it works:*
-1. Send me a Solana contract address
-2. I'll analyze the token's security, fundamentals, and hype
-3. Get a detailed report in seconds
+1. Send me a Solana or BNB contract address
+2. I'll automatically detect the blockchain
+3. Analyze the token's security, fundamentals, and hype
+4. Get a detailed report in seconds
 
 📝 *Just paste a contract address to get started!*
 
-Example:
-\`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\`
+Examples:
+• Solana: \`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\`
+• BNB: \`0x2170Ed0880ac9A755fd29B2688956BD959F933F8\`
 
 ⚡ Powered by AI • Real-time data • Professional analysis
   `.trim();
@@ -207,7 +233,7 @@ bot.onText(/\/help/, (msg) => {
 /about - Learn more about DYOR Scanner
 
 *How to use:*
-Simply send any Solana contract address and I'll analyze it for you!
+Simply send any Solana or BNB contract address and I'll automatically detect the blockchain and analyze it for you!
 
 *What we analyze:*
 • Security (mint/freeze authority, red flags)
@@ -216,8 +242,9 @@ Simply send any Solana contract address and I'll analyze it for you!
 • Social presence (Twitter, Telegram, Website)
 • AI-powered narrative verification
 
-*Example contract:*
-\`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\`
+*Example contracts:*
+• Solana: \`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\`
+• BNB: \`0x2170Ed0880ac9A755fd29B2688956BD959F933F8\`
 
 Need help? Contact: @dyorscan
   `.trim();
@@ -232,7 +259,7 @@ bot.onText(/\/about/, (msg) => {
   const aboutMessage = `
 ℹ️ *About DYOR Scanner*
 
-DYOR (Do Your Own Research) Scanner is an AI-powered tool for analyzing Solana tokens.
+DYOR (Do Your Own Research) Scanner is an AI-powered tool for analyzing Solana and BNB tokens.
 
 *Features:*
 ✅ Real-time market data
@@ -240,10 +267,13 @@ DYOR (Do Your Own Research) Scanner is an AI-powered tool for analyzing Solana t
 ✅ AI narrative verification
 ✅ Social sentiment analysis
 ✅ Professional scoring system
+✅ Multi-chain support (Solana & BNB)
 
 *Data Sources:*
-• DexScreener - Market data
-• RugCheck - Security analysis
+• DexScreener - Market data (Solana & BNB)
+• RugCheck - Security analysis (Solana)
+• BSCScan - BNB on-chain data
+• Helius - Solana on-chain data
 • Social media - Community sentiment
 • GPT-4 - Intelligent analysis
 
@@ -272,16 +302,15 @@ bot.on('message', async (msg) => {
     return;
   }
   
-  // Check if it looks like a Solana address
-  if (!validateSolanaAddress(text)) {
+  // Check if it looks like a valid address (Solana or BNB)
+  if (!validateAddress(text)) {
     bot.sendMessage(
       chatId,
       `❌ Invalid contract address format.
 
-Please send a valid Solana contract address (32-44 characters, base58 encoded).
-
-Example:
-\`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\``,
+Please send a valid contract address:
+• Solana: 32-44 characters, base58 encoded (e.g., \`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\`)
+• BNB/BSC: 0x followed by 40 hex characters (e.g., \`0x2170Ed0880ac9A755fd29B2688956BD959F933F8\`)`,
       { parse_mode: 'Markdown', disable_web_page_preview: true }
     );
     return;
@@ -321,11 +350,15 @@ Example:
       await bot.sendMessage(chatId, formattedResult, { parse_mode: 'Markdown', disable_web_page_preview: true });
     }
     
+    // Detect blockchain for DexScreener URL
+    const blockchain = detectBlockchain(text);
+    const chainParam = blockchain === "bnb" ? "bsc" : "solana";
+    
     // Add inline keyboard with actions
     const keyboard = {
       inline_keyboard: [
         [
-          { text: '🔗 View on DexScreener', url: `https://dexscreener.com/solana/${text}` },
+          { text: '🔗 View on DexScreener', url: `https://dexscreener.com/${chainParam}/${text}` },
         ],
         [
           { text: '🔍 Scan Another Token', callback_data: 'scan_another' },
@@ -378,7 +411,7 @@ bot.on('callback_query', async (query) => {
     bot.answerCallbackQuery(query.id);
     bot.sendMessage(
       chatId,
-      '📝 Send me another Solana contract address to analyze!',
+      '📝 Send me another Solana or BNB contract address to analyze!',
       { parse_mode: 'Markdown', disable_web_page_preview: true }
     );
   }

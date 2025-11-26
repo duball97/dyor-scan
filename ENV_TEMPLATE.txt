@@ -14,6 +14,13 @@ TELEGRAM_BOT_KEY=your_telegram_bot_token_here
 # ScrapingBee API (Required for Twitter/Nitter scraping)
 SCRAPINGBEE_KEY=your_scrapingbee_api_key_here
 
+# Helius API (Optional - for Solana token on-chain data)
+HELIUS_KEY=your_helius_api_key_here
+
+# BSCScan API (Optional - for BNB/BSC token on-chain data)
+# Get your free API key at https://bscscan.com/apis
+BSCSCAN_API_KEY=your_bscscan_api_key_here
+
 # API Configuration (Optional)
 # If you want to enable API key authentication
 # Set up the required database tables using API_KEYS_SETUP.sql

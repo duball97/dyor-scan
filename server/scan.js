@@ -40,12 +40,43 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// Helper: Detect blockchain from address format
+function detectBlockchain(address) {
+  if (!address || typeof address !== "string") return null;
+  const trimmed = address.trim();
+  
+  // BNB/BSC addresses are Ethereum-style: 0x followed by 40 hex characters
+  if (/^0x[a-fA-F0-9]{40}$/.test(trimmed)) {
+    return "bnb";
+  }
+  
+  // Solana addresses are base58 encoded and typically 32-44 characters
+  const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  if (base58Regex.test(trimmed)) {
+    return "solana";
+  }
+  
+  return null;
+}
+
 // Helper: Validate Solana address format
 function validateSolanaAddress(address) {
   if (!address || typeof address !== "string") return false;
   // Solana addresses are base58 encoded and typically 32-44 characters
   const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
   return base58Regex.test(address.trim());
+}
+
+// Helper: Validate BNB/BSC address format
+function validateBNBAddress(address) {
+  if (!address || typeof address !== "string") return false;
+  // BNB addresses are Ethereum-style: 0x followed by 40 hex characters
+  return /^0x[a-fA-F0-9]{40}$/.test(address.trim());
+}
+
+// Helper: Validate any supported blockchain address
+function validateAddress(address) {
+  return validateSolanaAddress(address) || validateBNBAddress(address);
 }
 
 // Helper: Fetch with timeout
@@ -266,6 +297,124 @@ async function getSolscanHolders(mint) {
   } catch (err) {
     const duration = Date.now() - startTime;
     console.error(`[Solscan] ❌ Failed after ${duration}ms:`, err.message);
+    return null;
+  }
+}
+
+// Fetch token info from BSCScan (BNB/BSC)
+async function getBSCScanTokenInfo(contractAddress) {
+  const startTime = Date.now();
+  console.log(`[BSCScan] Starting fetch for ${contractAddress}`);
+  
+  const apiKey = process.env.BSCSCAN_API_KEY;
+  if (!apiKey) {
+    console.log(`[BSCScan] No API key configured`);
+    return null;
+  }
+  
+  try {
+    // Get token info (name, symbol, decimals, total supply)
+    const tokenInfoUrl = `https://api.bscscan.com/api?module=token&action=tokeninfo&contractaddress=${contractAddress}&apikey=${apiKey}`;
+    
+    const response = await fetchWithTimeout(
+      tokenInfoUrl,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+      8000
+    );
+
+    if (!response.ok) {
+      console.log(`[BSCScan] Request failed: ${response.status}`);
+      return null;
+    }
+
+    const json = await response.json();
+    
+    if (json.status !== "1" || !json.result) {
+      console.log(`[BSCScan] API returned error: ${json.message || "Unknown error"}`);
+      return null;
+    }
+
+    const token = json.result;
+    const result = {
+      tokenName: token.name || null,
+      tokenSymbol: token.symbol || null,
+      decimals: token.decimals ? parseInt(token.decimals) : null,
+      supply: token.totalSupply ? BigInt(token.totalSupply).toString() : null,
+      holderCount: null, // Will be fetched separately
+    };
+    
+    const duration = Date.now() - startTime;
+    console.log(`[BSCScan] ✅ Success: ${result.tokenSymbol || "N/A"} - ${duration}ms`);
+    console.log(`[BSCScan] Supply: ${result.supply}, Decimals: ${result.decimals}`);
+    
+    return result;
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[BSCScan] ❌ Failed after ${duration}ms:`, err.message);
+    return null;
+  }
+}
+
+// Fetch token holders count from BSCScan (BNB/BSC)
+async function getBSCScanHolders(contractAddress) {
+  const startTime = Date.now();
+  console.log(`[BSCScan] Starting fetch for holders: ${contractAddress}`);
+  
+  const apiKey = process.env.BSCSCAN_API_KEY;
+  if (!apiKey) {
+    console.log(`[BSCScan] No API key configured for holders`);
+    return null;
+  }
+  
+  try {
+    // Get token holder count (using tokenholderlist with page size 1 to get total)
+    // Note: BSCScan doesn't directly provide total count, so we'll try to get it from token info
+    // Alternative: Use tokenholderlist and count, but that's expensive. 
+    // For now, we'll use a workaround - get first page and estimate, or use tokeninfo which sometimes has holder count
+    
+    // Try to get from token info first (some tokens have this)
+    const tokenInfoUrl = `https://api.bscscan.com/api?module=token&action=tokeninfo&contractaddress=${contractAddress}&apikey=${apiKey}`;
+    
+    const response = await fetchWithTimeout(
+      tokenInfoUrl,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+      8000
+    );
+
+    if (!response.ok) {
+      console.log(`[BSCScan] Request failed: ${response.status}`);
+      return null;
+    }
+
+    const json = await response.json();
+    
+    if (json.status !== "1" || !json.result) {
+      console.log(`[BSCScan] API returned error: ${json.message || "Unknown error"}`);
+      return null;
+    }
+
+    // BSCScan tokeninfo doesn't directly provide holder count
+    // We'll need to use tokenholderlist API, but it's paginated and expensive
+    // For now, return null and we can enhance later if needed
+    // Alternative: Use a third-party service or DexScreener which might have this
+    
+    const duration = Date.now() - startTime;
+    console.log(`[BSCScan] Holder count not available in tokeninfo - ${duration}ms`);
+    
+    return null;
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[BSCScan] ❌ Failed after ${duration}ms:`, err.message);
     return null;
   }
 }
@@ -741,31 +890,31 @@ async function getTwitterFromNitter(twitterUrl) {
   }
 
   // Nitter mirrors to try (in order of preference)
-  const nitterMirrors = [
-    'https://nitter.net',
+    const nitterMirrors = [
+      'https://nitter.net',
     'https://nitter.privacydev.net',
-    'https://nitter.poast.org',
-  ];
+      'https://nitter.poast.org',
+    ];
 
-  for (const mirror of nitterMirrors) {
-    try {
+    for (const mirror of nitterMirrors) {
+      try {
       console.log(`[Nitter Scraper] Trying mirror: ${mirror}`);
       
       // Build Nitter user profile URL
-      const nitterUrl = `${mirror}/${username}`;
+        const nitterUrl = `${mirror}/${username}`;
       console.log(`[Nitter Scraper] Fetching via ScrapingBee: ${nitterUrl}`);
       
       // Fetch HTML using ScrapingBee
       const html = await fetchWithScrapingBee(nitterUrl);
       
       // Check for rate limiting or errors
-      if (html.includes('rate limit') || html.includes('Too many requests')) {
+        if (html.includes('rate limit') || html.includes('Too many requests')) {
         console.log(`[Nitter Scraper] ${mirror} is rate limited`);
         continue; // Try next mirror
-      }
+        }
 
       // Parse HTML with cheerio
-      const $ = cheerio.load(html);
+        const $ = cheerio.load(html);
       
       // Check if we have tweets
       const tweetElements = $('.timeline-item');
@@ -775,8 +924,8 @@ async function getTwitterFromNitter(twitterUrl) {
       }
 
       // Extract tweets using Nitter's HTML structure
-      const tweets = [];
-      
+        const tweets = [];
+
       tweetElements.slice(0, 5).each((i, el) => {
         const $tweet = $(el);
         
@@ -799,7 +948,7 @@ async function getTwitterFromNitter(twitterUrl) {
         
         // Extract tweet URL
         const linkElement = $tweet.find('a[href*="/status/"]').first();
-        let tweetUrl = null;
+          let tweetUrl = null;
         let tweetId = null;
         
         if (linkElement.length > 0) {
@@ -813,10 +962,10 @@ async function getTwitterFromNitter(twitterUrl) {
             } else {
               tweetUrl = href.startsWith('http') ? href : `https://x.com${href}`;
             }
+            }
           }
-        }
 
-        if (text) {
+          if (text) {
           tweets.push({
             text,
             date,
@@ -827,20 +976,20 @@ async function getTwitterFromNitter(twitterUrl) {
             tweetId,
             tweetUrl,
           });
-        }
-      });
+          }
+        });
 
-      if (tweets.length > 0) {
+        if (tweets.length > 0) {
         const duration = Date.now() - startTime;
         console.log(`[Nitter Scraper] ✅ Success via ${mirror}: Found ${tweets.length} tweets - ${duration}ms`);
 
-        const result = {
-          tweets,
-          topTweet: tweets[0] || null,
-          tweetCount: tweets.length,
-        };
-        
-        return result;
+          const result = {
+            tweets,
+            topTweet: tweets[0] || null,
+            tweetCount: tweets.length,
+          };
+          
+          return result;
       } else {
         console.log(`[Nitter Scraper] ${mirror} returned 0 tweets`);
       }
@@ -1098,34 +1247,65 @@ async function getTokenData(contractAddress) {
   const overallStart = Date.now();
   console.log(`\n[TokenData] ===== Starting token data fetch for ${contractAddress} =====`);
   
+  // Detect blockchain
+  const blockchain = detectBlockchain(contractAddress);
+  if (!blockchain) {
+    throw new Error("Invalid address format. Must be a valid Solana or BNB/BSC address.");
+  }
+  console.log(`[TokenData] Detected blockchain: ${blockchain.toUpperCase()}`);
+  
   try {
-    // Fetch data from multiple sources in parallel
-    console.log(`[TokenData] Fetching from 5 sources: DexScreener, RugCheck, Helius, Birdeye, Solscan`);
     const fetchStart = Date.now();
     
-    const [dexData, rugData, heliusData, birdeyeData, solscanData] =
-      await Promise.allSettled([
+    // Branch API calls based on blockchain
+    let dexData, rugData, fundamentalsData, birdeyeData, holdersData;
+    
+    if (blockchain === "bnb") {
+      // BNB/BSC: Use DexScreener, BSCScan (skip RugCheck, Birdeye, Helius, Solscan)
+      console.log(`[TokenData] Fetching from 3 sources: DexScreener, BSCScan`);
+      [dexData, fundamentalsData, holdersData] = await Promise.allSettled([
+        getDexScreenerData(contractAddress),
+        getBSCScanTokenInfo(contractAddress),
+        getBSCScanHolders(contractAddress),
+      ]);
+      rugData = { status: "fulfilled", value: null }; // RugCheck doesn't support BNB
+      birdeyeData = { status: "fulfilled", value: null }; // Birdeye is Solana-only
+    } else {
+      // Solana: Use existing sources
+      console.log(`[TokenData] Fetching from 5 sources: DexScreener, RugCheck, Helius, Birdeye, Solscan`);
+      [dexData, rugData, fundamentalsData, birdeyeData, holdersData] = await Promise.allSettled([
       getDexScreenerData(contractAddress),
       getRugCheckData(contractAddress),
         getHeliusFundamentals(contractAddress),
         getBirdeyeData(contractAddress),
         getSolscanHolders(contractAddress),
       ]);
+    }
 
     const fetchDuration = Date.now() - fetchStart;
     console.log(`[TokenData] Initial fetch completed in ${fetchDuration}ms`);
 
     const dex = dexData.status === "fulfilled" ? dexData.value : null;
     const rug = rugData.status === "fulfilled" ? rugData.value : null;
-    const helius = heliusData.status === "fulfilled" ? heliusData.value : null;
+    const fundamentals = fundamentalsData.status === "fulfilled" ? fundamentalsData.value : null;
     const birdeye = birdeyeData.status === "fulfilled" ? birdeyeData.value : null;
-    const solscanHolders = solscanData.status === "fulfilled" ? solscanData.value : null;
+    const holders = holdersData.status === "fulfilled" ? holdersData.value : null;
 
-    // Use Solscan holders if available, otherwise fall back to Helius
-    const holderCount = solscanHolders || helius?.holderCount || null;
+    // Get holder count based on blockchain
+    let holderCount = null;
+    if (blockchain === "bnb") {
+      holderCount = holders || fundamentals?.holderCount || null;
+    } else {
+      holderCount = holders || fundamentals?.holderCount || null;
+    }
 
-    console.log(`[TokenData] Results: DexScreener=${!!dex}, RugCheck=${!!rug}, Helius=${!!helius}, Birdeye=${!!birdeye}, Solscan=${solscanHolders !== null}`);
-    console.log(`[TokenData] Holders: ${holderCount} (Solscan: ${solscanHolders}, Helius: ${helius?.holderCount})`);
+    if (blockchain === "bnb") {
+      console.log(`[TokenData] Results: DexScreener=${!!dex}, BSCScan=${!!fundamentals}`);
+      console.log(`[TokenData] Holders: ${holderCount} (BSCScan: ${holders || fundamentals?.holderCount || "N/A"})`);
+    } else {
+      console.log(`[TokenData] Results: DexScreener=${!!dex}, RugCheck=${!!rug}, Helius=${!!fundamentals}, Birdeye=${!!birdeye}, Solscan=${holders !== null}`);
+      console.log(`[TokenData] Holders: ${holderCount} (Solscan: ${holders}, Helius: ${fundamentals?.holderCount})`);
+    }
     
     if (dexData.status === "rejected") {
       console.error(`[TokenData] DexScreener failed:`, dexData.reason);
@@ -1133,21 +1313,21 @@ async function getTokenData(contractAddress) {
     if (rugData.status === "rejected") {
       console.error(`[TokenData] RugCheck failed:`, rugData.reason);
     }
-    if (heliusData.status === "rejected") {
-      console.error(`[TokenData] Helius failed:`, heliusData.reason);
+    if (fundamentalsData.status === "rejected") {
+      console.error(`[TokenData] ${blockchain === "bnb" ? "BSCScan" : "Helius"} failed:`, fundamentalsData.reason);
     }
     if (birdeyeData.status === "rejected") {
       console.error(`[TokenData] Birdeye failed:`, birdeyeData.reason);
     }
-
+    
     const socials = dex?.socials || null;
 
     // Fetch social data in parallel
     console.log(`[TokenData] Fetching social data...`);
     const socialStart = Date.now();
     
-    const symbol = dex?.symbol || helius?.tokenSymbol || "???";
-    const tokenName = dex?.tokenName || helius?.tokenName || null;
+    const symbol = dex?.symbol || fundamentals?.tokenSymbol || "???";
+    const tokenName = dex?.tokenName || fundamentals?.tokenName || null;
     
     const [twitterDataResult, twitterSearchResult, telegramDataResult, websiteDataResult] =
       await Promise.allSettled([
@@ -1190,7 +1370,7 @@ async function getTokenData(contractAddress) {
         liquidity: birdeye?.liquidity || dex?.liquidity || null,
         volume24h: birdeye?.volume24h || dex?.volume24h || null,
       },
-      fundamentals: helius,
+      fundamentals: fundamentals,
       securityData: rug,
       socials,
       sentimentScore,
@@ -1215,14 +1395,27 @@ async function getTokenData(contractAddress) {
       console.error(`[TokenData] Website scrape failed:`, websiteDataResult.reason);
     }
 
-    // Generate comprehensive project summary
-    const projectSummary = `
-Token ${dex?.symbol || helius?.tokenSymbol || "???"} is a Solana token.
+    // Generate comprehensive project summary based on blockchain
+    const blockchainName = blockchain === "bnb" ? "BNB/BSC" : "Solana";
+    const projectSummary = blockchain === "bnb" ? `
+Token ${dex?.symbol || fundamentals?.tokenSymbol || "???"} is a ${blockchainName} token.
 
-Supply: ${helius?.supply || "unknown"}
-Holders: ${helius?.holderCount || "unknown"}
-Mint Authority: ${helius?.mintAuthority || "unknown"}
-Freeze Authority: ${helius?.freezeAuthority || "unknown"}
+Supply: ${fundamentals?.supply || "unknown"}
+Decimals: ${fundamentals?.decimals || "unknown"}
+Holders: ${holderCount || "unknown"}
+
+Price: $${birdeye?.price || dex?.priceUsd || "unknown"}
+24h Volume: ${birdeye?.volume24h || dex?.volume24h || "unknown"}
+Liquidity: ${birdeye?.liquidity || dex?.liquidity || "unknown"}
+
+Sentiment Score: ${sentimentScore || "N/A"}
+`.trim() : `
+Token ${dex?.symbol || fundamentals?.tokenSymbol || "???"} is a ${blockchainName} token.
+
+Supply: ${fundamentals?.supply || "unknown"}
+Holders: ${holderCount || "unknown"}
+Mint Authority: ${fundamentals?.mintAuthority || "unknown"}
+Freeze Authority: ${fundamentals?.freezeAuthority || "unknown"}
 
 Price: $${birdeye?.price || dex?.priceUsd || "unknown"}
 24h Volume: ${birdeye?.volume24h || dex?.volume24h || "unknown"}
@@ -1232,10 +1425,21 @@ Security Risks: ${rug?.risks?.length || 0}
 Sentiment Score: ${sentimentScore || "N/A"}
 `.trim();
     
+    // Calculate market cap
+    const price = birdeye?.price || dex?.priceUsd;
+    const supply = fundamentals?.supply;
+    const decimals = fundamentals?.decimals || (blockchain === "bnb" ? 18 : 9);
+    let marketCap = null;
+    if (price && supply) {
+      marketCap = (BigInt(supply) * BigInt(Math.round(price * Math.pow(10, decimals)))) / BigInt(Math.pow(10, decimals));
+      marketCap = Number(marketCap) / Math.pow(10, decimals);
+    }
+    
     return {
       projectSummary,
-      tokenName: dex?.tokenName || helius?.tokenName || "Unknown Token",
-      symbol: dex?.symbol || helius?.tokenSymbol || "???",
+      blockchain, // Include blockchain in response
+      tokenName: dex?.tokenName || fundamentals?.tokenName || "Unknown Token",
+      symbol: dex?.symbol || fundamentals?.tokenSymbol || "???",
       socials,
       marketData: {
         price: birdeye?.price || dex?.priceUsd || null,
@@ -1243,20 +1447,11 @@ Sentiment Score: ${sentimentScore || "N/A"}
         liquidity: birdeye?.liquidity || dex?.liquidity || null,
         priceChange24h: birdeye?.priceChange24h || dex?.priceChange24h || null,
         dexUrl: dex?.dexUrl || null,
-        // Calculate market cap from supply * price
-        marketCap: (() => {
-          const price = birdeye?.price || dex?.priceUsd;
-          const supply = helius?.supply;
-          const decimals = helius?.decimals || 9;
-          if (price && supply) {
-            return (supply * price) / Math.pow(10, decimals);
-          }
-          return null;
-        })(),
+        marketCap: marketCap,
       },
       fundamentals: {
-        ...helius,
-        holderCount: holderCount, // Use Solscan or Helius holder count
+        ...fundamentals,
+        holderCount: holderCount,
         holders: holderCount, // Alias for compatibility
       },
       birdeye,
@@ -1910,12 +2105,12 @@ export default async function handler(req, res) {
     const trimmedAddress = contractAddress.trim();
     console.log(`[Handler] Trimmed address: ${trimmedAddress.substring(0, 20)}...`);
     
-    if (!validateSolanaAddress(trimmedAddress)) {
-      console.log(`[Handler] ❌ Validation failed: Invalid Solana address format`);
+    if (!validateAddress(trimmedAddress)) {
+      console.log(`[Handler] ❌ Validation failed: Invalid address format`);
       return res.status(400).json({
-        error: "Invalid Solana address format",
+        error: "Invalid address format",
         message:
-          "Contract address must be a valid Solana address (32-44 base58 characters)",
+          "Contract address must be a valid Solana address (32-44 base58 characters) or BNB/BSC address (0x followed by 40 hex characters)",
       });
     }
 

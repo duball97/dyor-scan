@@ -30,6 +30,25 @@ async function fetchWithScrapingBee(url) {
   return await response.text();
 }
 
+// Helper: Detect blockchain from address format
+function detectBlockchain(address) {
+  if (!address || typeof address !== "string") return null;
+  const trimmed = address.trim();
+  
+  // BNB/BSC addresses are Ethereum-style: 0x followed by 40 hex characters
+  if (/^0x[a-fA-F0-9]{40}$/.test(trimmed)) {
+    return "bnb";
+  }
+  
+  // Solana addresses are base58 encoded and typically 32-44 characters
+  const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  if (base58Regex.test(trimmed)) {
+    return "solana";
+  }
+  
+  return null;
+}
+
 // Helper: Fetch with timeout
 async function fetchWithTimeout(url, options, timeoutMs = 10000) {
   const controller = new AbortController();
@@ -105,6 +124,44 @@ async function getRugCheckData(contractAddress) {
       score: data.score || null,
     };
   } catch (error) {
+    return null;
+  }
+}
+
+// Fetch token info from BSCScan (BNB/BSC)
+async function getBSCScanTokenInfo(contractAddress) {
+  try {
+    const apiKey = process.env.BSCSCAN_API_KEY;
+    if (!apiKey) return null;
+    
+    const url = `https://api.bscscan.com/api?module=token&action=tokeninfo&contractaddress=${contractAddress}&apikey=${apiKey}`;
+    const response = await fetchWithTimeout(url, { method: "GET", headers: { "Content-Type": "application/json" } }, 8000);
+    if (!response.ok) return null;
+    
+    const json = await response.json();
+    if (json.status !== "1" || !json.result) return null;
+    
+    const token = json.result;
+    return {
+      tokenName: token.name || null,
+      tokenSymbol: token.symbol || null,
+      decimals: token.decimals ? parseInt(token.decimals) : null,
+      supply: token.totalSupply ? BigInt(token.totalSupply).toString() : null,
+      holderCount: null,
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
+// Fetch token holders count from BSCScan (BNB/BSC)
+async function getBSCScanHolders(contractAddress) {
+  try {
+    const apiKey = process.env.BSCSCAN_API_KEY;
+    if (!apiKey) return null;
+    // BSCScan doesn't directly provide total holder count in free tier
+    return null;
+  } catch (err) {
     return null;
   }
 }
@@ -656,6 +713,12 @@ export default async function handler(req, res) {
 
   const trimmedAddress = contractAddress.trim();
   
+  // Detect blockchain
+  const blockchain = detectBlockchain(trimmedAddress);
+  if (!blockchain) {
+    return res.status(400).json({ error: "Invalid address format. Must be a valid Solana or BNB/BSC address." });
+  }
+  
   // Set up SSE headers
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -673,20 +736,44 @@ export default async function handler(req, res) {
     // Phase 1: Fetch basic data
     sendEvent("status", { message: "Fetching token data...", phase: 2 });
     
-    const [dex, rug, helius, solscanHolders] = await Promise.all([
-      getDexScreenerData(trimmedAddress),
-      getRugCheckData(trimmedAddress),
-      getHeliusFundamentals(trimmedAddress),
-      getSolscanHolders(trimmedAddress),
-    ]);
+    let dex, rug, fundamentals, holders;
+    
+    if (blockchain === "bnb") {
+      // BNB/BSC: Use DexScreener, BSCScan (skip RugCheck, Helius, Solscan)
+      [dex, fundamentals, holders] = await Promise.all([
+        getDexScreenerData(trimmedAddress),
+        getBSCScanTokenInfo(trimmedAddress),
+        getBSCScanHolders(trimmedAddress),
+      ]);
+      rug = null; // RugCheck doesn't support BNB
+    } else {
+      // Solana: Use existing sources
+      [dex, rug, fundamentals, holders] = await Promise.all([
+        getDexScreenerData(trimmedAddress),
+        getRugCheckData(trimmedAddress),
+        getHeliusFundamentals(trimmedAddress),
+        getSolscanHolders(trimmedAddress),
+      ]);
+    }
 
-    const holderCount = solscanHolders || helius?.holderCount || null;
-    const symbol = dex?.symbol || helius?.tokenSymbol || "???";
+    const holderCount = holders || fundamentals?.holderCount || null;
+    const symbol = dex?.symbol || fundamentals?.tokenSymbol || "???";
+    
+    // Calculate market cap
+    const price = dex?.priceUsd || null;
+    const supply = fundamentals?.supply;
+    const decimals = fundamentals?.decimals || (blockchain === "bnb" ? 18 : 9);
+    let marketCap = null;
+    if (price && supply) {
+      marketCap = (BigInt(supply) * BigInt(Math.round(price * Math.pow(10, decimals)))) / BigInt(Math.pow(10, decimals));
+      marketCap = Number(marketCap) / Math.pow(10, decimals);
+    }
     
     // Build initial token data
     const tokenData = {
       contractAddress: trimmedAddress,
-      tokenName: dex?.tokenName || helius?.tokenName || "Unknown Token",
+      blockchain, // Include blockchain
+      tokenName: dex?.tokenName || fundamentals?.tokenName || "Unknown Token",
       symbol: symbol,
       socials: dex?.socials || null,
       marketData: {
@@ -695,9 +782,10 @@ export default async function handler(req, res) {
         liquidity: dex?.liquidity || null,
         priceChange24h: dex?.priceChange24h || null,
         dexUrl: dex?.dexUrl || null,
+        marketCap: marketCap,
       },
       fundamentals: {
-        ...helius,
+        ...fundamentals,
         holderCount: holderCount,
       },
       securityData: rug,
