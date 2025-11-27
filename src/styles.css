@@ -1963,7 +1963,7 @@ body::before {
   align-items: center;
   justify-content: center;
 }
-
+  
 .score-loading .loader-dots {
   display: flex;
   gap: 6px;
