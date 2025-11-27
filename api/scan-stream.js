@@ -219,7 +219,7 @@ async function searchNitterForTicker(ticker) {
 
   for (const mirror of nitterMirrors) {
     try {
-      const searchUrl = `${mirror}/search?f=tweets&q=${encodeURIComponent(searchQuery)}`;
+      const searchUrl = `${mirror}/search?f=top&q=${encodeURIComponent(searchQuery)}`;
       const html = await fetchWithScrapingBee(searchUrl);
       
       if (html.includes('rate limit') || html.includes('Too many requests')) {
@@ -379,10 +379,17 @@ async function getTwitterFromNitter(twitterUrl) {
       });
 
       if (tweets.length > 0) {
+        // Sort tweets by engagement (likes + retweets) - highest first
+        const sortedTweets = tweets.sort((a, b) => {
+          const engagementA = (a.likes || 0) + (a.retweets || 0) * 2;
+          const engagementB = (b.likes || 0) + (b.retweets || 0) * 2;
+          return engagementB - engagementA;
+        });
+        
         return {
-          tweets,
-          topTweet: tweets[0] || null,
-          tweetCount: tweets.length,
+          tweets: sortedTweets,
+          topTweet: sortedTweets[0] || null,
+          tweetCount: sortedTweets.length,
         };
       }
     } catch (error) {

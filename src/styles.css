@@ -2311,6 +2311,12 @@ body::before {
   gap: 16px;
 }
 
+.tweets-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+
 .tweet-item {
   display: flex;
   flex-direction: column;
@@ -2325,6 +2331,75 @@ body::before {
 .tweet-item:hover {
   border-color: #404040;
   background: linear-gradient(135deg, #151515 0%, #1a1a1a 100%);
+}
+
+.tweet-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #0a0a0a 0%, #151515 100%);
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  transition: all 0.2s;
+  min-height: 120px;
+}
+
+.tweet-card:hover {
+  border-color: #404040;
+  background: linear-gradient(135deg, #151515 0%, #1a1a1a 100%);
+}
+
+.tweet-card .tweet-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.tweet-card .tweet-text {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #b0b0b0;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-wrap: break-word;
+}
+
+.tweet-card .tweet-date {
+  font-size: 0.7rem;
+  color: #606060;
+}
+
+.tweet-card .tweet-stats {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.7rem;
+  color: #606060;
+  margin-top: auto;
+}
+
+.tweet-card .tweet-link {
+  font-size: 0.75rem;
+  color: #60a5fa;
+  text-decoration: none;
+  margin-top: 0.25rem;
+  align-self: flex-start;
+}
+
+.tweet-card .tweet-link:hover {
+  color: #93c5fd;
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .tweets-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .tweet-content {
@@ -2364,6 +2439,13 @@ body::before {
   font-size: 13px;
   font-weight: 500;
   transition: all 0.2s;
+}
+
+.tweet-card .tweet-link {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  border: none;
+  background: transparent;
 }
 
 .tweet-link:hover {

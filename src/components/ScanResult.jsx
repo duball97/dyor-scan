@@ -192,7 +192,12 @@ function ScanResult({ result }) {
       report += `${"-".repeat(50)}\n`;
       if (marketData.price) report += `Price: $${parseFloat(marketData.price).toFixed(8)}\n`;
       if (marketData.liquidity) report += `Liquidity: $${(marketData.liquidity / 1000000).toFixed(2)}M\n`;
-      if (marketData.volume24h) report += `24h Volume: $${(marketData.volume24h / 1000000).toFixed(2)}M\n`;
+      if (marketData.volume24h) {
+        const volumeStr = marketData.volume24h >= 1000000 
+          ? `$${(marketData.volume24h / 1000000).toFixed(2)}M`
+          : `$${(marketData.volume24h / 1000).toFixed(2)}K`;
+        report += `24h Volume: ${volumeStr}\n`;
+      }
       if (marketData.priceChange24h) report += `24h Change: ${marketData.priceChange24h >= 0 ? '+' : ''}${marketData.priceChange24h.toFixed(2)}%\n`;
       report += `\n`;
     }
@@ -434,6 +439,67 @@ function ScanResult({ result }) {
         ) : null}
       </div>
 
+      {/* Combined Tweets Section - Right after Summary */}
+      {(_streaming && (!tickerTweets && !twitterData)) && (
+        <div className="result-section">
+          <h3>Top X Posts</h3>
+          <div className="section-loader">
+            <div className="loader-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <span className="loader-text">Fetching top tweets...</span>
+          </div>
+        </div>
+      )}
+      {((tickerTweets && tickerTweets.tweets && tickerTweets.tweets.length > 0) || 
+        (twitterData && twitterData.tweets && twitterData.tweets.length > 0)) && (
+        <div className="result-section">
+          <h3>Top X Posts</h3>
+          <div className="tweets-grid">
+            {[
+              ...(tickerTweets?.tweets || []).map(t => ({ ...t, source: 'ticker' })),
+              ...(twitterData?.tweets || []).map(t => ({ ...t, source: 'profile' }))
+            ]
+              .filter(tweet => tweet.tweetUrl)
+              .sort((a, b) => {
+                // Sort by engagement: likes + (retweets * 2)
+                const engagementA = (parseInt(a.likes) || 0) + (parseInt(a.retweets) || 0) * 2;
+                const engagementB = (parseInt(b.likes) || 0) + (parseInt(b.retweets) || 0) * 2;
+                return engagementB - engagementA;
+              })
+              .slice(0, 10) // Show up to 10 tweets total
+              .map((tweet, idx) => (
+                <div key={idx} className="tweet-card">
+                  <div className="tweet-content">
+                    <p className="tweet-text">{tweet.text || "No text available"}</p>
+                    {tweet.date && (
+                      <span className="tweet-date">
+                        {new Date(tweet.date).toLocaleDateString()}
+                      </span>
+                    )}
+                    {(tweet.likes || tweet.retweets) && (
+                      <div className="tweet-stats">
+                        {tweet.likes && <span>❤️ {tweet.likes}</span>}
+                        {tweet.retweets && <span>🔄 {tweet.retweets}</span>}
+                      </div>
+                    )}
+                  </div>
+                  <a 
+                    href={tweet.tweetUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="tweet-link"
+                  >
+                    View on X →
+                  </a>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       <div className="analysis-section fundamentals-section">
         <h3 className="analysis-section-title">FUNDAMENTALS</h3>
         {fundamentalsAnalysis ? (
@@ -500,7 +566,11 @@ function ScanResult({ result }) {
         {marketData?.volume24h && (
           <div className="metric-card">
             <div className="metric-label">24h Volume</div>
-            <div className="metric-value">${(marketData.volume24h / 1000000).toFixed(2)}M</div>
+            <div className="metric-value">
+              {marketData.volume24h >= 1000000 
+                ? `$${(marketData.volume24h / 1000000).toFixed(2)}M`
+                : `$${(marketData.volume24h / 1000).toFixed(2)}K`}
+            </div>
           </div>
         )}
         {marketData?.priceChange24h !== null && marketData?.priceChange24h !== undefined && (
@@ -597,107 +667,6 @@ function ScanResult({ result }) {
         </div>
       )}
 
-      {/* X Posts About Token */}
-      {_streaming && !tickerTweets && (
-        <div className="result-section">
-          <h3>Recent X Posts About {symbol}</h3>
-          <div className="section-loader">
-            <div className="loader-dots">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-            <span className="loader-text">Fetching tweets...</span>
-          </div>
-        </div>
-      )}
-      {tickerTweets && tickerTweets.tweets && tickerTweets.tweets.length > 0 && (
-        <div className="result-section">
-          <h3>Recent X Posts About {symbol}</h3>
-          <div className="tweets-list">
-            {tickerTweets.tweets
-              .filter(tweet => tweet.tweetUrl) // Only show tweets with URLs
-              .slice(0, 3)
-              .map((tweet, idx) => (
-                <div key={idx} className="tweet-item">
-                  <div className="tweet-content">
-                    <p className="tweet-text">{tweet.text || "No text available"}</p>
-                    {tweet.date && (
-                      <span className="tweet-date">
-                        {new Date(tweet.date).toLocaleDateString()}
-                      </span>
-                    )}
-                    {(tweet.likes || tweet.retweets) && (
-                      <div className="tweet-stats">
-                        {tweet.likes && <span>❤️ {tweet.likes}</span>}
-                        {tweet.retweets && <span>🔄 {tweet.retweets}</span>}
-                      </div>
-                    )}
-                  </div>
-                  <a 
-                    href={tweet.tweetUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="tweet-link"
-                  >
-                    View on X →
-                  </a>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* X Posts from Token Profile */}
-      {_streaming && !twitterData && socials?.x && (
-        <div className="result-section">
-          <h3>Recent X Posts from Profile</h3>
-          <div className="section-loader">
-            <div className="loader-dots">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-            <span className="loader-text">Fetching profile tweets...</span>
-          </div>
-        </div>
-      )}
-      {twitterData && twitterData.tweets && twitterData.tweets.length > 0 && (
-        <div className="result-section">
-          <h3>Recent X Posts from Profile</h3>
-          <div className="tweets-list">
-            {twitterData.tweets
-              .filter(tweet => tweet.tweetUrl) // Only show tweets with URLs
-              .slice(0, 3)
-              .map((tweet, idx) => (
-                <div key={idx} className="tweet-item">
-                  <div className="tweet-content">
-                    <p className="tweet-text">{tweet.text || "No text available"}</p>
-                    {tweet.date && (
-                      <span className="tweet-date">
-                        {new Date(tweet.date).toLocaleDateString()}
-                      </span>
-                    )}
-                    {(tweet.likes || tweet.retweets) && (
-                      <div className="tweet-stats">
-                        {tweet.likes && <span>❤️ {tweet.likes}</span>}
-                        {tweet.retweets && <span>🔄 {tweet.retweets}</span>}
-                      </div>
-                    )}
-                  </div>
-                  <a 
-                    href={tweet.tweetUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="tweet-link"
-                  >
-                    View on X →
-                  </a>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
 
       {/* Topics */}
       {entities && entities.topics && entities.topics.length > 0 && (
