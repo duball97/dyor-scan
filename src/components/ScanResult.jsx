@@ -154,6 +154,7 @@ function ScanResult({ result }) {
 
   const [copySuccess, setCopySuccess] = useState(false);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
   const formatFullReport = () => {
     let report = `DYOR SCAN REPORT\n`;
@@ -363,37 +364,49 @@ function ScanResult({ result }) {
   const summarySections = parseSummary(notesForUser);
 
   return (
-    <section className="scan-result">
-      <div className="result-header">
-        <div className="result-header-main">
-          <h2>
-            {tokenName || "Unknown Token"} {symbol && <span className="symbol">({symbol})</span>}
-          </h2>
-          <p className="ca">{contractAddress}</p>
-        </div>
-        <div className="result-header-aside">
-          {tokenScore !== undefined && tokenScore !== null ? (
-            <div className="score-display">
-              <ScoreCircle score={tokenScore} />
-              <span className="score-label-text">Overall Score</span>
-            </div>
-          ) : (
-            <div className="score-display">
-              <div className="score-loading">
-                <div className="loader-dots">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
+    <>
+      <section className="scan-result">
+        <div className="result-header">
+          <div className="result-header-main">
+            <h2>
+              {tokenName || "Unknown Token"} {symbol && <span className="symbol">({symbol})</span>}
+            </h2>
+            <p className="ca">{contractAddress}</p>
+          </div>
+          <div className="result-header-aside">
+            <button 
+              onClick={() => setShowModal(true)}
+              className="btn-view-full-analysis"
+              title="View Full Analysis"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                <circle cx="10" cy="10" r="3"></circle>
+              </svg>
+              Full Analysis
+            </button>
+            {tokenScore !== undefined && tokenScore !== null ? (
+              <div className="score-display">
+                <ScoreCircle score={tokenScore} />
+                <span className="score-label-text">Overall Score</span>
               </div>
-              <span className="score-label-text">Calculating Score...</span>
+            ) : (
+              <div className="score-display">
+                <div className="score-loading">
+                  <div className="loader-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                </div>
+                <span className="score-label-text">Calculating Score...</span>
+              </div>
+            )}
+            <div className="verdict-block">
+              {cached && <span className="cached-tag">cached</span>}
             </div>
-          )}
-          <div className="verdict-block">
-            {cached && <span className="cached-tag">cached</span>}
           </div>
         </div>
-      </div>
 
       <div className="result-actions">
         <a 
@@ -702,6 +715,297 @@ function ScanResult({ result }) {
         </div>
       )}
     </section>
+
+    {/* Full Analysis Modal */}
+    {showModal && (
+      <div className="analysis-modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="analysis-modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="analysis-modal-header">
+            <div className="analysis-modal-header-main">
+              <h2>
+                Full Analysis: {tokenName || "Unknown Token"} {symbol && <span className="symbol">({symbol})</span>}
+              </h2>
+              {tokenScore !== undefined && tokenScore !== null ? (
+                <div className="modal-header-score">
+                  <ScoreCircle score={tokenScore} />
+                  <span className="score-label-text">Overall Score</span>
+                </div>
+              ) : (
+                <div className="modal-header-score">
+                  <div className="score-loading">
+                    <div className="loader-dots">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                  </div>
+                  <span className="score-label-text">Calculating Score...</span>
+                </div>
+              )}
+            </div>
+            <button 
+              className="analysis-modal-close"
+              onClick={() => setShowModal(false)}
+              aria-label="Close modal"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          
+          <div className="analysis-modal-body">
+
+            {/* Summary */}
+            <div className="analysis-section summary-section">
+              <h3 className="analysis-section-title">SUMMARY</h3>
+              {summary ? (
+                <div className="analysis-text">
+                  {summary.split('\n').map((line, idx) => {
+                    const trimmed = line.trim();
+                    if (!trimmed) return null;
+                    if (trimmed.match(/^[•\-\*]\s/) || trimmed.match(/^[0-9]+\.\s/)) {
+                      return (
+                        <div key={idx} style={{ marginBottom: '0.5rem', paddingLeft: '1rem' }}>
+                          {renderWithBold(trimmed)}
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={idx} style={{ marginBottom: '0.5rem', paddingLeft: '1rem' }}>
+                        • {renderWithBold(trimmed)}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : _streaming ? (
+                <SectionLoader text="Generating summary..." />
+              ) : null}
+            </div>
+
+            {/* Tweets */}
+            {((tickerTweets && tickerTweets.tweets && tickerTweets.tweets.length > 0) || 
+              (twitterData && twitterData.tweets && twitterData.tweets.length > 0)) && (
+              <div className="result-section">
+                <h3>Top X Posts</h3>
+                <div className="tweets-grid">
+                  {[
+                    ...(tickerTweets?.tweets || []).map(t => ({ ...t, source: 'ticker' })),
+                    ...(twitterData?.tweets || []).map(t => ({ ...t, source: 'profile' }))
+                  ]
+                    .filter(tweet => tweet.tweetUrl)
+                    .sort((a, b) => {
+                      const engagementA = (parseInt(a.likes) || 0) + (parseInt(a.retweets) || 0) * 2;
+                      const engagementB = (parseInt(b.likes) || 0) + (parseInt(b.retweets) || 0) * 2;
+                      return engagementB - engagementA;
+                    })
+                    .slice(0, 10)
+                    .map((tweet, idx) => (
+                      <div key={idx} className="tweet-card">
+                        <div className="tweet-content">
+                          {(tweet.author || tweet.username) && (
+                            <div className="tweet-author">
+                              {tweet.username ? (
+                                <span className="tweet-username">@{tweet.username}</span>
+                              ) : null}
+                              {tweet.author && tweet.author !== tweet.username && (
+                                <span className="tweet-author-name">{tweet.author}</span>
+                              )}
+                            </div>
+                          )}
+                          <p className="tweet-text">{tweet.text || "No text available"}</p>
+                          {tweet.date && (
+                            <span className="tweet-date">
+                              {new Date(tweet.date).toLocaleDateString()}
+                            </span>
+                          )}
+                          {(tweet.likes || tweet.retweets) && (
+                            <div className="tweet-stats">
+                              {tweet.likes && <span>❤️ {tweet.likes}</span>}
+                              {tweet.retweets && <span>🔄 {tweet.retweets}</span>}
+                            </div>
+                          )}
+                        </div>
+                        <a 
+                          href={tweet.tweetUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="tweet-link"
+                        >
+                          View on X →
+                        </a>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* Fundamentals */}
+            <div className="analysis-section fundamentals-section">
+              <h3 className="analysis-section-title">FUNDAMENTALS</h3>
+              {fundamentalsAnalysis ? (
+                <p className="analysis-text">{renderWithBold(fundamentalsAnalysis)}</p>
+              ) : _streaming ? (
+                <SectionLoader text="Analyzing fundamentals..." />
+              ) : null}
+            </div>
+
+            {/* Hype */}
+            <div className="analysis-section hype-section">
+              <h3 className="analysis-section-title">HYPE</h3>
+              {hypeAnalysis ? (
+                <p className="analysis-text">{renderWithBold(hypeAnalysis)}</p>
+              ) : _streaming ? (
+                <SectionLoader text="Analyzing market sentiment..." />
+              ) : null}
+            </div>
+
+            {/* Key Metrics Grid */}
+            <div className="metrics-grid">
+              {marketData?.price && (
+                <div className="metric-card">
+                  <div className="metric-label">Price</div>
+                  <div className="metric-value">{formatPrice(marketData.price)}</div>
+                </div>
+              )}
+              {marketData?.liquidity && (
+                <div className="metric-card">
+                  <div className="metric-label">Liquidity</div>
+                  <div className="metric-value">
+                    {marketData.liquidity >= 1000000 
+                      ? `$${(marketData.liquidity / 1000000).toFixed(2)}M`
+                      : `$${(marketData.liquidity / 1000).toFixed(2)}K`}
+                  </div>
+                </div>
+              )}
+              {fundamentals?.holderCount && (
+                <div className="metric-card">
+                  <div className="metric-label">Holders</div>
+                  <div className="metric-value">{fundamentals.holderCount.toLocaleString()}</div>
+                </div>
+              )}
+              {marketData?.volume24h && (
+                <div className="metric-card">
+                  <div className="metric-label">24h Volume</div>
+                  <div className="metric-value">
+                    {marketData.volume24h >= 1000000 
+                      ? `$${(marketData.volume24h / 1000000).toFixed(2)}M`
+                      : `$${(marketData.volume24h / 1000).toFixed(2)}K`}
+                  </div>
+                </div>
+              )}
+              {marketData?.priceChange24h !== null && marketData?.priceChange24h !== undefined && (
+                <div className="metric-card">
+                  <div className="metric-label">24h Change</div>
+                  <div className={`metric-value ${marketData.priceChange24h >= 0 ? 'positive' : 'negative'}`}>
+                    {marketData.priceChange24h >= 0 ? '+' : ''}{marketData.priceChange24h.toFixed(2)}%
+                  </div>
+                </div>
+              )}
+              {sentimentScore !== null && sentimentScore !== undefined && (
+                <div className="metric-card">
+                  <div className="metric-label">Sentiment</div>
+                  <div className="metric-value">{sentimentScore}/100</div>
+                </div>
+              )}
+            </div>
+
+            {/* Security Status */}
+            {securityData && (
+              <div className="result-section">
+                <h3>Security Analysis</h3>
+                {securityData.risks && securityData.risks.length > 0 ? (
+                  <div className="security-risks">
+                    {securityData.risks.map((risk, idx) => (
+                      <div key={idx} className="risk-item">
+                        <span className={`risk-badge risk-${risk.level}`}>{risk.level}</span>
+                        <span className="risk-description">{risk.description}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="security-good">
+                    <span className="check-icon">✓</span>
+                    <span>No significant security risks detected</span>
+                  </div>
+                )}
+                {fundamentals && (
+                  <div className="security-details">
+                    {fundamentals.mintAuthority === null && (
+                      <div className="security-detail good">
+                        <span>✓</span> No mint authority (safe)
+                      </div>
+                    )}
+                    {fundamentals.freezeAuthority === null && (
+                      <div className="security-detail good">
+                        <span>✓</span> No freeze authority (safe)
+                      </div>
+                    )}
+                    {fundamentals.mintAuthority && (
+                      <div className="security-detail warning">
+                        <span>⚠</span> Has mint authority (can create new tokens)
+                      </div>
+                    )}
+                    {fundamentals.freezeAuthority && (
+                      <div className="security-detail warning">
+                        <span>⚠</span> Has freeze authority (can freeze accounts)
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Narrative */}
+            <div className="result-section">
+              <h3>Narrative</h3>
+              <p className="narrative-text">{narrativeClaim || "No narrative extracted yet."}</p>
+            </div>
+
+            {/* Social Links */}
+            {socials && (socials.website || socials.x || socials.telegram) && (
+              <div className="result-section">
+                <h3>Social Links</h3>
+                <div className="socials-list">
+                  {socials.website && (
+                    <a href={socials.website} target="_blank" rel="noopener noreferrer" className="social-item">
+                      🌐 Website
+                    </a>
+                  )}
+                  {socials.x && (
+                    <a href={socials.x} target="_blank" rel="noopener noreferrer" className="social-item">
+                      𝕏 Twitter
+                    </a>
+                  )}
+                  {socials.telegram && (
+                    <a href={socials.telegram} target="_blank" rel="noopener noreferrer" className="social-item">
+                      📱 Telegram
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Topics */}
+            {entities && entities.topics && entities.topics.length > 0 && (
+              <div className="result-section">
+                <h3>Related Topics</h3>
+                <div className="topics-line">
+                  {entities.topics.map((topic, idx) => (
+                    <React.Fragment key={idx}>
+                      <span className="topic-item">{topic}</span>
+                      {idx < entities.topics.length - 1 && <span className="topic-separator">,</span>}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

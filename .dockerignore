@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+.vite/
+
+# Environment files (will be passed via docker-compose or runtime)
+.env
+.env.local
+.env.*.local
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation
+*.md
+!README.md
+
+# Frontend files (not needed for bot)
+src/
+public/
+index.html
+vite.config.js
+eslint.config.js
+
+# API files (not needed for bot)
+api/
+
+# Scripts (not needed for bot)
+scripts/
+
+# Other
+.DS_Store
+*.log
+coverage/
+.nyc_output/
+
