@@ -4,7 +4,7 @@ services:
   telegram-bot:
     build:
       context: .
-      dockerfile: Dockerfile.bot
+      dockerfile: Dockerfile
     container_name: dyor-telegram-bot
     restart: unless-stopped
     env_file:
