@@ -87,71 +87,76 @@ function formatScanResult(result) {
   }
   message += `\n`;
   
-  // Market Data (only show if we have data)
+  // Market Data (compact format)
   const marketDataItems = [];
   
   const priceText = formatPrice(priceUsd);
   if (priceText) {
-    marketDataItems.push(`• Price: ${priceText}`);
+    marketDataItems.push(`Price: ${priceText}`);
   }
   
   // Safe price change formatting
   if (priceChange24h !== null && priceChange24h !== undefined && typeof priceChange24h === 'number') {
     const priceChangeText = (priceChange24h > 0 ? '+' : '') + priceChange24h.toFixed(2) + '%';
-    marketDataItems.push(`• 24h Change: ${priceChangeText}`);
+    marketDataItems.push(`24h: ${priceChangeText}`);
   }
   
   if (liquidity) {
-    marketDataItems.push(`• Liquidity: $${formatNumber(Math.round(liquidity))}`);
+    const liqValue = liquidity >= 1000000 
+      ? `$${(liquidity / 1000000).toFixed(2)}M`
+      : `$${(liquidity / 1000).toFixed(2)}K`;
+    marketDataItems.push(`Liq: ${liqValue}`);
   }
   
   if (volume24h) {
-    marketDataItems.push(`• Volume (24h): $${formatNumber(Math.round(volume24h))}`);
-  }
-  
-  if (marketCap) {
-    marketDataItems.push(`• Market Cap: $${formatNumber(Math.round(marketCap))}`);
+    const volValue = volume24h >= 1000000 
+      ? `$${(volume24h / 1000000).toFixed(2)}M`
+      : `$${(volume24h / 1000).toFixed(2)}K`;
+    marketDataItems.push(`Vol: ${volValue}`);
   }
   
   const holdersFormatted = formatNumber(holders);
   if (holdersFormatted) {
-    marketDataItems.push(`• Holders: ${holdersFormatted}`);
+    marketDataItems.push(`Holders: ${holdersFormatted}`);
   }
   
   if (marketDataItems.length > 0) {
-    message += `📈 *Market Data*\n`;
-    message += marketDataItems.join('\n') + '\n\n';
+    message += `📈 *${marketDataItems.join(' • ')}*\n\n`;
   }
   
-  // Narrative
+  // Narrative (truncate if too long)
   if (narrativeClaim) {
-    message += `🎭 *Narrative*\n${narrativeClaim}\n\n`;
+    const maxNarrativeLength = 150;
+    const narrative = narrativeClaim.length > maxNarrativeLength 
+      ? narrativeClaim.substring(0, maxNarrativeLength) + '...'
+      : narrativeClaim;
+    message += `🎭 *Narrative*\n${narrative}\n\n`;
   }
   
-  // Tweets about the token
+  // Tweets about the token - only show clickable links
   if (tickerTweets && tickerTweets.tweets && tickerTweets.tweets.length > 0) {
-    message += `🐦 *Recent X Posts About ${symbol || 'Token'}*\n\n`;
-    tickerTweets.tweets.slice(0, 3).forEach((tweet, idx) => {
-      const tweetText = tweet.text ? tweet.text.substring(0, 150) + (tweet.text.length > 150 ? '...' : '') : '';
-      const likes = tweet.likes || '0';
-      const retweets = tweet.retweets || '0';
-      const author = tweet.author || tweet.username || 'Unknown';
-      
-      message += `*${idx + 1}.* ${tweetText}\n`;
-      message += `👤 ${author} | ❤️ ${likes} | 🔄 ${retweets}\n`;
+    message += `🐦 *Top X Posts*\n\n`;
+    tickerTweets.tweets.slice(0, 5).forEach((tweet) => {
       if (tweet.tweetUrl) {
-        message += `🔗 ${tweet.tweetUrl}\n`;
+        message += `${tweet.tweetUrl}\n`;
       }
-      message += `\n`;
     });
+    message += `\n`;
   }
   
-  // Risks
+  // Risks (limit to top 3, truncate if too long)
   if (risks && risks.length > 0) {
     message += `⚠️ *Risk Flags*\n`;
-    risks.forEach(risk => {
-      message += `• ${risk}\n`;
+    risks.slice(0, 3).forEach(risk => {
+      const maxRiskLength = 80;
+      const riskText = risk.length > maxRiskLength 
+        ? risk.substring(0, maxRiskLength) + '...'
+        : risk;
+      message += `• ${riskText}\n`;
     });
+    if (risks.length > 3) {
+      message += `• ...and ${risks.length - 3} more\n`;
+    }
     message += `\n`;
   }
   
