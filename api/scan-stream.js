@@ -334,6 +334,10 @@ async function getTwitterFromNitter(twitterUrl) {
       const tweetElements = $('.timeline-item');
       if (tweetElements.length === 0) continue;
 
+      // Get author name from profile (usually in the header)
+      const authorElement = $('.profile-card-fullname, .profile-card-name, .fullname').first();
+      const author = authorElement.text().trim() || username;
+
       const tweets = [];
       tweetElements.slice(0, 5).each((i, el) => {
         const $tweet = $(el);
@@ -367,6 +371,8 @@ async function getTwitterFromNitter(twitterUrl) {
         if (text) {
           tweets.push({
             text,
+            author,
+            username,
             date,
             timeText,
             likes: parseInt(likes) || 0,
@@ -386,10 +392,17 @@ async function getTwitterFromNitter(twitterUrl) {
           return engagementB - engagementA;
         });
         
+        // Ensure all tweets have author and username
+        const formattedTweets = sortedTweets.map(tweet => ({
+          ...tweet,
+          author: tweet.author || author,
+          username: tweet.username || username,
+        }));
+        
         return {
-          tweets: sortedTweets,
-          topTweet: sortedTweets[0] || null,
-          tweetCount: sortedTweets.length,
+          tweets: formattedTweets,
+          topTweet: formattedTweets[0] || null,
+          tweetCount: formattedTweets.length,
         };
       }
     } catch (error) {
@@ -643,12 +656,50 @@ function calculateTokenScore(tokenData) {
   return Math.max(1, Math.min(100, Math.round(score)));
 }
 
-// Extract narrative claim
-async function extractNarrative(projectSummary) {
+// Extract narrative claim based on tweets and token data
+async function extractNarrative(tokenData, tickerTweets, twitterData) {
   try {
-    const prompt = `Extract the core narrative/story of this token in 1-2 sentences. What real-world narrative is it using?
+    const symbol = tokenData.symbol || "???";
+    const tokenName = tokenData.tokenName || "Unknown Token";
+    const liquidity = tokenData.marketData?.liquidity || 0;
+    const holders = tokenData.fundamentals?.holderCount || null;
+    
+    // Combine all tweets
+    const allTweets = [
+      ...(tickerTweets?.tweets || []),
+      ...(twitterData?.tweets || [])
+    ];
+    
+    let tweetContext = "";
+    if (allTweets.length > 0) {
+      // Get top 10 tweets by engagement, including author info
+      const sortedTweets = allTweets
+        .map(tweet => ({
+          text: tweet.text || tweet.content || "",
+          author: tweet.author || tweet.username || "Unknown",
+          username: tweet.username || null,
+          likes: parseInt(tweet.likes || tweet.likeCount || 0),
+          retweets: parseInt(tweet.retweets || tweet.retweetCount || 0),
+          engagement: parseInt(tweet.likes || tweet.likeCount || 0) + (parseInt(tweet.retweets || tweet.retweetCount || 0) * 2)
+        }))
+        .sort((a, b) => b.engagement - a.engagement)
+        .slice(0, 10);
+      
+      const tweetTexts = sortedTweets.map((t, idx) => {
+        const authorInfo = t.username ? `@${t.username} (${t.author})` : t.author;
+        return `${idx + 1}. ${authorInfo}: "${t.text.substring(0, 200)}..." (${t.likes} likes, ${t.retweets} retweets)`;
+      }).join("\n");
+      
+      tweetContext = `\n\nTWEETS ABOUT THIS TOKEN:\n${tweetTexts}`;
+    }
+    
+    const baseInfo = `Token: ${symbol} (${tokenName}). Liquidity: $${(liquidity / 1000000).toFixed(2)}M. Holders: ${holders ? holders.toLocaleString() : "unknown"}.`;
+    
+    const prompt = `Analyze the tweets and token information below to extract the core narrative/story of this token. What real-world narrative, theme, or story is the community using to promote this token?
 
-${projectSummary}`;
+${baseInfo}${tweetContext}
+
+Based on the tweets and community discussion, what is the main narrative or story being told about this token? Provide 1-2 sentences that capture the core narrative.`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -986,10 +1037,9 @@ export default async function handler(req, res) {
     sendEvent("sentimentScore", { sentimentScore: tokenData.sentimentScore });
     sendEvent("tokenScore", { tokenScore: tokenData.tokenScore });
 
-    // Phase 3: Extract narrative
-    sendEvent("status", { message: "Extracting narrative...", phase: 4 });
-    const projectSummary = `Token: ${symbol} (${tokenData.tokenName}). Liquidity: $${(tokenData.marketData.liquidity || 0) / 1000000}M. Holders: ${holderCount || "unknown"}.`;
-    const narrativeClaim = await extractNarrative(projectSummary);
+    // Phase 3: Extract narrative (right after tweets, using tweet data)
+    sendEvent("status", { message: "Extracting narrative from tweets...", phase: 4 });
+    const narrativeClaim = await extractNarrative(tokenData, tickerTweets, twitterData);
     sendEvent("narrative", { narrativeClaim });
 
     // Phase 4: Generate AI analysis (stream as they complete)

@@ -2357,6 +2357,24 @@ body::before {
   gap: 0.4rem;
 }
 
+.tweet-card .tweet-author {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.tweet-card .tweet-username {
+  font-weight: 600;
+  color: #888;
+  font-size: 0.9em;
+}
+
+.tweet-card .tweet-author-name {
+  color: #aaa;
+  font-size: 0.85em;
+}
+
 .tweet-card .tweet-text {
   font-size: 0.85rem;
   line-height: 1.4;

@@ -191,7 +191,12 @@ function ScanResult({ result }) {
       report += `MARKET DATA\n`;
       report += `${"-".repeat(50)}\n`;
       if (marketData.price) report += `Price: $${parseFloat(marketData.price).toFixed(8)}\n`;
-      if (marketData.liquidity) report += `Liquidity: $${(marketData.liquidity / 1000000).toFixed(2)}M\n`;
+      if (marketData.liquidity) {
+        const liquidityStr = marketData.liquidity >= 1000000 
+          ? `$${(marketData.liquidity / 1000000).toFixed(2)}M`
+          : `$${(marketData.liquidity / 1000).toFixed(2)}K`;
+        report += `Liquidity: ${liquidityStr}\n`;
+      }
       if (marketData.volume24h) {
         const volumeStr = marketData.volume24h >= 1000000 
           ? `$${(marketData.volume24h / 1000000).toFixed(2)}M`
@@ -473,6 +478,16 @@ function ScanResult({ result }) {
               .map((tweet, idx) => (
                 <div key={idx} className="tweet-card">
                   <div className="tweet-content">
+                    {(tweet.author || tweet.username) && (
+                      <div className="tweet-author">
+                        {tweet.username ? (
+                          <span className="tweet-username">@{tweet.username}</span>
+                        ) : null}
+                        {tweet.author && tweet.author !== tweet.username && (
+                          <span className="tweet-author-name">{tweet.author}</span>
+                        )}
+                      </div>
+                    )}
                     <p className="tweet-text">{tweet.text || "No text available"}</p>
                     {tweet.date && (
                       <span className="tweet-date">
@@ -554,7 +569,11 @@ function ScanResult({ result }) {
         {marketData?.liquidity && (
           <div className="metric-card">
             <div className="metric-label">Liquidity</div>
-            <div className="metric-value">${(marketData.liquidity / 1000000).toFixed(2)}M</div>
+            <div className="metric-value">
+              {marketData.liquidity >= 1000000 
+                ? `$${(marketData.liquidity / 1000000).toFixed(2)}M`
+                : `$${(marketData.liquidity / 1000).toFixed(2)}K`}
+            </div>
           </div>
         )}
         {fundamentals?.holderCount && (
