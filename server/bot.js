@@ -181,6 +181,15 @@ function detectBlockchain(address) {
   return null;
 }
 
+// Helper: Validate Solana address format
+function validateSolanaAddress(address) {
+  if (!address || typeof address !== "string") return false;
+  const trimmed = address.trim();
+  // Solana addresses are base58 encoded and typically 32-44 characters
+  const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  return base58Regex.test(trimmed);
+}
+
 // Helper: Validate BNB/BSC address format
 function validateBNBAddress(address) {
   if (!address || typeof address !== "string") return false;
