@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -155,6 +155,19 @@ function ScanResult({ result }) {
   const [copySuccess, setCopySuccess] = useState(false);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [hasAutoOpened, setHasAutoOpened] = useState(false);
+
+  // Auto-open modal when scan completes
+  useEffect(() => {
+    // Check if scan is complete (has summary and tokenScore, or streaming is done)
+    const isComplete = (!_streaming && (summary || tokenScore !== null)) || 
+                      (summary && tokenScore !== null && !hasAutoOpened);
+    
+    if (isComplete && !hasAutoOpened) {
+      setShowModal(true);
+      setHasAutoOpened(true);
+    }
+  }, [summary, tokenScore, _streaming, hasAutoOpened]);
 
   const formatFullReport = () => {
     let report = `DYOR SCAN REPORT\n`;
@@ -725,10 +738,12 @@ function ScanResult({ result }) {
               <h2>
                 Full Analysis: {tokenName || "Unknown Token"} {symbol && <span className="symbol">({symbol})</span>}
               </h2>
+            </div>
+            <div className="analysis-modal-header-right">
               {tokenScore !== undefined && tokenScore !== null ? (
                 <div className="modal-header-score">
                   <ScoreCircle score={tokenScore} />
-                  <span className="score-label-text">Overall Score</span>
+                  <span className="score-label-text">Score</span>
                 </div>
               ) : (
                 <div className="modal-header-score">
@@ -739,20 +754,20 @@ function ScanResult({ result }) {
                       <span></span>
                     </div>
                   </div>
-                  <span className="score-label-text">Calculating Score...</span>
+                  <span className="score-label-text">Calculating...</span>
                 </div>
               )}
+              <button 
+                className="analysis-modal-close"
+                onClick={() => setShowModal(false)}
+                aria-label="Close modal"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
             </div>
-            <button 
-              className="analysis-modal-close"
-              onClick={() => setShowModal(false)}
-              aria-label="Close modal"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
           </div>
           
           <div className="analysis-modal-body">

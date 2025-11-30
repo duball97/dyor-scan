@@ -64,6 +64,9 @@ function formatScanResult(result) {
   // Tweets
   const tickerTweets = result.tickerTweets;
   
+  // Social links
+  const socials = result.socials || {};
+  
   // Risks
   const risks = result.redFlags || [];
 
@@ -159,7 +162,23 @@ function formatScanResult(result) {
     }
     message += `\n`;
   }
+
+  // Social Links
+  const socialLinks = [];
+  if (socials.website) {
+    socialLinks.push(`🌐 [Website](${socials.website})`);
+  }
+  if (socials.x) {
+    socialLinks.push(`𝕏 [Twitter/X](${socials.x})`);
+  }
+  if (socials.telegram) {
+    socialLinks.push(`📱 [Telegram](${socials.telegram})`);
+  }
   
+  if (socialLinks.length > 0) {
+    message += `🔗 *Links*\n${socialLinks.join(' • ')}\n\n`;
+  }
+
   message += `🔗 View full report: https://dyorscan.io\n`;
   message += `📱 Scan more tokens: Send another contract address`;
   

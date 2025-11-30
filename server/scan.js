@@ -25,7 +25,11 @@ async function fetchWithScrapingBee(url) {
   });
 
   if (!response.ok) {
-    throw new Error(`ScrapingBee API error: ${response.status} ${response.statusText}`);
+    const errorText = await response.text().catch(() => '');
+    if (response.status === 401) {
+      throw new Error(`ScrapingBee API authentication failed (401). Please check your SCRAPINGBEE_KEY environment variable. ${errorText ? `Details: ${errorText.substring(0, 100)}` : ''}`);
+    }
+    throw new Error(`ScrapingBee API error: ${response.status} ${response.statusText}${errorText ? ` - ${errorText.substring(0, 100)}` : ''}`);
   }
 
   return await response.text();
@@ -719,11 +723,11 @@ function calculateTokenScore(tokenData) {
       if (blockchain === "solana") {
         if (fundamentals?.mintAuthority === null && fundamentals?.freezeAuthority === null) {
           score += 3; // No mint/freeze authority = good (reduced from 5)
-        }
-        if (fundamentals?.mintAuthority) {
+      }
+      if (fundamentals?.mintAuthority) {
           score -= 15; // Has mint authority = MAJOR risk (was -8)
-        }
-        if (fundamentals?.freezeAuthority) {
+      }
+      if (fundamentals?.freezeAuthority) {
           score -= 15; // Has freeze authority = MAJOR risk (was -8)
         }
       }
@@ -1067,7 +1071,7 @@ async function getTwitterFromNitter(twitterUrl) {
           return result;
       } else {
         console.log(`[Nitter Scraper] ${mirror} returned 0 tweets`);
-      }
+    }
     } catch (error) {
       console.log(`[Nitter Scraper] Error with ${mirror}: ${error.message}`);
       continue; // Try next mirror
@@ -1136,7 +1140,153 @@ async function getTelegramFeed(telegramUrl) {
   }
 }
 
-// Scrape website HTML using CORSProxy (free)
+// Fetch website URL from four.meme for BNB tokens
+async function getWebsiteFromFourMeme(contractAddress) {
+  const startTime = Date.now();
+  console.log(`[FourMeme] Starting fetch for website: ${contractAddress}`);
+  
+  if (!SCRAPINGBEE_API_KEY) {
+    console.log(`[FourMeme] SCRAPINGBEE_KEY not set, skipping`);
+    return null;
+  }
+  
+  try {
+    const fourMemeUrl = `https://four.meme/token/${contractAddress}`;
+    console.log(`[FourMeme] Fetching: ${fourMemeUrl}`);
+    
+    const html = await fetchWithScrapingBee(fourMemeUrl);
+    
+    if (!html || html.length < 100) {
+      console.log(`[FourMeme] Empty or invalid response`);
+      return null;
+    }
+    
+    const $ = cheerio.load(html);
+    
+    // Look for website links in various places
+    // Common patterns: href attributes, social links, etc.
+    let websiteUrl = null;
+    
+    // Method 1: Look for links in the token info section (the div with bg-darkGray900)
+    const tokenInfoSection = $('.bg-darkGray900, [class*="darkGray900"]').first();
+    if (tokenInfoSection.length > 0) {
+      tokenInfoSection.find('a[href]').each((i, elem) => {
+        const href = $(elem).attr('href');
+        if (href) {
+          // Convert relative URLs to absolute
+          let fullUrl = href;
+          if (href.startsWith('/')) {
+            fullUrl = `https://four.meme${href}`;
+          } else if (!href.startsWith('http://') && !href.startsWith('https://')) {
+            fullUrl = `https://${href}`;
+          }
+          
+          if (fullUrl.startsWith('http://') || fullUrl.startsWith('https://')) {
+            // Skip common non-website links
+            if (!fullUrl.includes('twitter.com') && 
+                !fullUrl.includes('x.com') && 
+                !fullUrl.includes('telegram.org') && 
+                !fullUrl.includes('t.me') &&
+                !fullUrl.includes('dexscreener.com') &&
+                !fullUrl.includes('bscscan.com') &&
+                !fullUrl.includes('four.meme') &&
+                !fullUrl.includes('github.com') &&
+                !fullUrl.includes('discord.com') &&
+                !fullUrl.includes('medium.com') &&
+                !fullUrl.includes('reddit.com')) {
+              // This might be the website
+              if (!websiteUrl) {
+                websiteUrl = fullUrl;
+              }
+            }
+          }
+        }
+      });
+    }
+    
+    // Method 1b: If not found in token section, search all links
+    if (!websiteUrl) {
+      $('a[href]').each((i, elem) => {
+        const href = $(elem).attr('href');
+        if (href) {
+          // Convert relative URLs to absolute
+          let fullUrl = href;
+          if (href.startsWith('/')) {
+            fullUrl = `https://four.meme${href}`;
+          } else if (!href.startsWith('http://') && !href.startsWith('https://')) {
+            fullUrl = `https://${href}`;
+          }
+          
+          if (fullUrl.startsWith('http://') || fullUrl.startsWith('https://')) {
+            // Skip common non-website links
+            if (!fullUrl.includes('twitter.com') && 
+                !fullUrl.includes('x.com') && 
+                !fullUrl.includes('telegram.org') && 
+                !fullUrl.includes('t.me') &&
+                !fullUrl.includes('dexscreener.com') &&
+                !fullUrl.includes('bscscan.com') &&
+                !fullUrl.includes('four.meme') &&
+                !fullUrl.includes('github.com') &&
+                !fullUrl.includes('discord.com') &&
+                !fullUrl.includes('medium.com') &&
+                !fullUrl.includes('reddit.com')) {
+              // This might be the website
+              if (!websiteUrl) {
+                websiteUrl = fullUrl;
+              }
+            }
+          }
+        }
+      });
+    }
+    
+    // Method 2: Look in meta tags (og:url, canonical, etc.)
+    if (!websiteUrl) {
+      const ogUrl = $('meta[property="og:url"]').attr('content');
+      const canonical = $('link[rel="canonical"]').attr('href');
+      
+      if (ogUrl && (ogUrl.startsWith('http://') || ogUrl.startsWith('https://'))) {
+        websiteUrl = ogUrl;
+      } else if (canonical && (canonical.startsWith('http://') || canonical.startsWith('https://'))) {
+        websiteUrl = canonical;
+      }
+    }
+    
+    // Method 3: Look for website in JSON-LD structured data
+    if (!websiteUrl) {
+      $('script[type="application/ld+json"]').each((i, elem) => {
+        try {
+          const json = JSON.parse($(elem).html());
+          if (json.url && (json.url.startsWith('http://') || json.url.startsWith('https://'))) {
+            websiteUrl = json.url;
+            return false; // break
+          }
+        } catch (e) {
+          // Ignore JSON parse errors
+        }
+      });
+    }
+    
+    const duration = Date.now() - startTime;
+    
+    if (websiteUrl) {
+      console.log(`[FourMeme] ✅ Found website: ${websiteUrl} - ${duration}ms`);
+      return websiteUrl;
+    } else {
+      console.log(`[FourMeme] No website found - ${duration}ms`);
+      return null;
+    }
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[FourMeme] ❌ Failed after ${duration}ms:`, err.message);
+    if (err.message.includes('401') || err.message.includes('authentication')) {
+      console.error(`[FourMeme] ⚠️  ScrapingBee API key issue. Please verify SCRAPINGBEE_KEY is set correctly in your environment.`);
+    }
+    return null;
+  }
+}
+
+// Scrape website HTML using ScrapingBee (primary) with fallback
 async function scrapeWebsite(websiteUrl) {
   const startTime = Date.now();
   console.log(`[Website] Starting scrape for: ${websiteUrl}`);
@@ -1146,7 +1296,71 @@ async function scrapeWebsite(websiteUrl) {
     return null;
   }
 
-  // Method 1: Try allorigins proxy (more reliable than corsproxy)
+  // Method 1: Try ScrapingBee first (best for Cloudflare-protected sites)
+  if (SCRAPINGBEE_API_KEY) {
+    try {
+      console.log(`[Website] Trying ScrapingBee...`);
+      const html = await fetchWithScrapingBee(websiteUrl);
+      
+      if (html && html.length > 100) {
+        const $ = cheerio.load(html);
+        
+        // Remove script and style tags
+        $('script, style, noscript').remove();
+        
+        const title = $("title").text().trim();
+        const metaDesc = $('meta[name="description"]').attr("content") || 
+                         $('meta[property="og:description"]').attr("content") || 
+                         $('meta[name="og:description"]').attr("content") || '';
+        const ogTitle = $('meta[property="og:title"]').attr("content") || '';
+        
+        // Get main content - prioritize article, main, or body
+        let text = '';
+        const article = $('article').first();
+        const main = $('main').first();
+        const body = $('body');
+        
+        if (article.length > 0) {
+          text = article.text().replace(/\s+/g, " ").trim();
+        } else if (main.length > 0) {
+          text = main.text().replace(/\s+/g, " ").trim();
+        } else {
+          text = body.text().replace(/\s+/g, " ").trim();
+        }
+        
+        // Extract key headings
+        const headings = [];
+        $('h1, h2, h3').each((i, el) => {
+          const headingText = $(el).text().trim();
+          if (headingText && headingText.length < 200) {
+            headings.push(headingText);
+          }
+        });
+
+        // Validate we got actual content
+        if (text.length < 100 && !title && !metaDesc) {
+          throw new Error('No meaningful content extracted');
+        }
+
+        const result = {
+          url: websiteUrl,
+          title: title || ogTitle || 'No title',
+          metaDesc: metaDesc || '',
+          shortText: text.slice(0, 2000), // Increased from 1500 to 2000
+          headings: headings.slice(0, 10), // Top 10 headings
+        };
+        
+        const duration = Date.now() - startTime;
+        console.log(`[Website] ✅ Success via ScrapingBee: Title="${result.title.substring(0, 50)}...", ${text.length} chars, ${headings.length} headings - ${duration}ms`);
+        
+        return result;
+      }
+    } catch (sbErr) {
+      console.log(`[Website] ScrapingBee method failed: ${sbErr.message}`);
+    }
+  }
+
+  // Method 2: Try allorigins proxy (fallback)
   try {
     const proxied = `https://api.allorigins.win/raw?url=${encodeURIComponent(websiteUrl)}`;
     console.log(`[Website] Trying allorigins proxy...`);
@@ -1180,6 +1394,7 @@ async function scrapeWebsite(websiteUrl) {
     }
 
     const $ = cheerio.load(html);
+    $('script, style, noscript').remove();
 
     const title = $("title").text().trim();
     const metaDesc = $('meta[name="description"]').attr("content") || 
@@ -1193,9 +1408,11 @@ async function scrapeWebsite(websiteUrl) {
     }
 
     const result = {
+      url: websiteUrl,
       title,
       metaDesc,
-      shortText: text.slice(0, 1500),
+      shortText: text.slice(0, 2000),
+      headings: [],
     };
     
     const duration = Date.now() - startTime;
@@ -1394,8 +1611,30 @@ async function getTokenData(contractAddress) {
     if (birdeyeData.status === "rejected") {
       console.error(`[TokenData] Birdeye failed:`, birdeyeData.reason);
     }
+
+    let socials = dex?.socials || null;
     
-    const socials = dex?.socials || null;
+    // For BNB tokens, check four.meme if DexScreener doesn't have a website
+    if (blockchain === "bnb" && (!socials || !socials.website)) {
+      console.log(`[TokenData] No website from DexScreener for BNB token, checking four.meme...`);
+      const fourMemeWebsite = await getWebsiteFromFourMeme(contractAddress);
+      if (fourMemeWebsite) {
+        console.log(`[TokenData] ✅ Found website from four.meme: ${fourMemeWebsite}`);
+        if (!socials) {
+          socials = { website: null, x: null, telegram: null };
+        }
+        socials.website = fourMemeWebsite;
+      } else {
+        console.log(`[TokenData] No website found on four.meme either`);
+      }
+    }
+    
+    // Console log the final website URL
+    if (socials?.website) {
+      console.log(`[TokenData] 🌐 FINAL WEBSITE URL: ${socials.website}`);
+    } else {
+      console.log(`[TokenData] 🌐 No website URL found for this token`);
+    }
 
     // Fetch social data in parallel
     console.log(`[TokenData] Fetching social data...`);
@@ -1556,31 +1795,79 @@ async function extractNarrativeClaim(projectSummary, socialContext) {
   console.log(`[Narrative] Social context provided: ${!!socialContext}`);
   
   try {
-    const socialDataText = socialContext
-      ? `
-SOCIAL CONTEXT:
-${socialContext}
-`
-      : "";
+    // Parse social context to extract website data
+    let websiteText = "";
+    let twitterText = "";
+    let telegramText = "";
+    
+    if (socialContext) {
+      try {
+        const socialData = JSON.parse(socialContext);
+        
+        // Format website content prominently
+        if (socialData.website) {
+          const website = socialData.website;
+          websiteText = `
+WEBSITE CONTENT (${website.url || 'Unknown URL'}):
+Title: ${website.title || 'No title'}
+Description: ${website.metaDesc || 'No description'}
+${website.headings && website.headings.length > 0 ? `Key Headings:\n${website.headings.map((h, i) => `${i + 1}. ${h}`).join('\n')}\n` : ''}
+Content: ${website.shortText || 'No content available'}
+`;
+        }
+        
+        // Format Twitter data
+        if (socialData.twitter && socialData.twitter.tweets && socialData.twitter.tweets.length > 0) {
+          const tweets = socialData.twitter.tweets.slice(0, 5).map(t => 
+            `- ${t.text || ''} (${t.likes || 0} likes, ${t.retweets || 0} retweets)`
+          ).join('\n');
+          twitterText = `\nTWITTER/X POSTS:\n${tweets}`;
+        }
+        
+        // Format Telegram data
+        if (socialData.telegram && socialData.telegram.messages && socialData.telegram.messages.length > 0) {
+          const messages = socialData.telegram.messages.slice(0, 5).map(m => 
+            `- ${m.text || ''}`
+          ).join('\n');
+          telegramText = `\nTELEGRAM MESSAGES:\n${messages}`;
+        }
+      } catch (e) {
+        // If parsing fails, use raw context
+        console.log(`[Narrative] Could not parse social context, using raw: ${e.message}`);
+      }
+    }
 
   const fullContext = `
 PROJECT SUMMARY:
 ${projectSummary}
-${socialDataText}
+${websiteText}${twitterText}${telegramText}
 `.trim();
     
     console.log(`[Narrative] Full context length: ${fullContext.length} chars`);
+    if (websiteText) {
+      console.log(`[Narrative] Website content included: ${websiteText.length} chars`);
+    }
 
   const prompt = `
 You are an expert crypto narrative analyst.
 
 Analyze this token's information and extract the core narrative claim - the story this token is telling.
 
+Pay special attention to the WEBSITE CONTENT - this is often the most reliable source of the token's claimed narrative, partnerships, and purpose.
+
 Look for:
-- References to real companies, products, or events
+- References to real companies, products, or events (especially in website content)
 - Partnerships or associations being claimed
 - Technology or innovation being referenced
 - Any real-world narratives being leveraged
+- Claims about utility, use cases, or real-world applications
+
+The website content is particularly important - analyze it carefully for:
+- Official claims about the project
+- Partnerships or integrations mentioned
+- Technology or features described
+- Roadmap or future plans
+- Team or organization information
 
 Return:
 1. A clear, specific narrative claim (what real-world story is this token using?)

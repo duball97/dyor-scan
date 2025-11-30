@@ -3695,6 +3695,12 @@ body::before {
   flex: 1;
 }
 
+.analysis-modal-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .analysis-modal-header h2 {
   margin: 0;
   font-size: 1.5rem;
@@ -3712,31 +3718,44 @@ body::before {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 
 .modal-header-score .score-circle-container {
-  width: 80px;
-  height: 80px;
+  width: 50px;
+  height: 50px;
 }
 
 .modal-header-score .score-circle {
-  width: 80px;
-  height: 80px;
+  width: 50px;
+  height: 50px;
+}
+
+.modal-header-score .score-circle circle {
+  stroke-width: 6;
 }
 
 .modal-header-score .score-text {
-  font-size: 0.9rem;
+  font-size: 0.7rem;
+}
+
+.modal-header-score .score-text .score-number {
+  font-size: 0.7rem;
+}
+
+.modal-header-score .score-text .score-label {
+  font-size: 0.6rem;
 }
 
 .modal-header-score .score-label-text {
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   color: #888;
+  white-space: nowrap;
 }
 
 .modal-header-score .score-loading {
-  width: 80px;
-  height: 80px;
+  width: 50px;
+  height: 50px;
 }
 
 .analysis-modal-close {
@@ -3791,23 +3810,39 @@ body::before {
     gap: 1rem;
   }
 
+  .analysis-modal-header-right {
+    flex-direction: row;
+    gap: 0.75rem;
+  }
+
   .analysis-modal-header h2 {
     font-size: 1.2rem;
   }
 
   .modal-header-score {
-    flex-direction: row;
-    gap: 1rem;
+    gap: 0.2rem;
   }
 
   .modal-header-score .score-circle-container {
-    width: 60px;
-    height: 60px;
+    width: 45px;
+    height: 45px;
   }
 
   .modal-header-score .score-circle {
-    width: 60px;
-    height: 60px;
+    width: 45px;
+    height: 45px;
+  }
+
+  .modal-header-score .score-circle circle {
+    stroke-width: 5;
+  }
+
+  .modal-header-score .score-text {
+    font-size: 0.65rem;
+  }
+
+  .modal-header-score .score-label-text {
+    font-size: 0.6rem;
   }
 
   .analysis-modal-body {
