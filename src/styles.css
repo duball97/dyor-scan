@@ -2319,7 +2319,7 @@ body::before {
 
 .tweets-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.75rem;
 }
 
@@ -2418,6 +2418,12 @@ body::before {
 .tweet-card .tweet-link:hover {
   color: #93c5fd;
   text-decoration: underline;
+}
+
+@media (max-width: 1024px) {
+  .tweets-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 768px) {

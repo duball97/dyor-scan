@@ -256,7 +256,7 @@ function Documentation() {
               <li><strong>Comprehensive documentation</strong> and examples</li>
             </ul>
           </div>
-
+          
           <h3>Endpoint</h3>
           <pre className="code-block">POST /api/scan</pre>
           

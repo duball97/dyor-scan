@@ -205,6 +205,7 @@ async function getDexScreenerData(contractAddress) {
         telegram: mainPair.info?.socials?.find((s) => s.type === "telegram")?.url || null,
       },
       dexUrl: mainPair.url || null,
+      marketCap: mainPair.marketCap || null, // Use marketCap from DexScreener if available
     };
 
     const duration = Date.now() - startTime;
@@ -648,18 +649,78 @@ function computeMarketSentiment(birdeye, dex, tickerTweets, twitterData) {
 }
 
 // Calculate comprehensive token score (1-100)
+// Format liquidity/volume: use K for < 1M, M for >= 1M
+function formatLiquidityVolume(value) {
+  if (!value) return "unknown";
+  if (value >= 1000000) {
+    return `$${(value / 1000000).toFixed(2)}M`;
+  } else {
+    return `$${(value / 1000).toFixed(0)}K`;
+  }
+}
+
+// Detect official exchange backing
+function detectOfficialBacking(tokenName, symbol, websiteData, socials) {
+  const nameLower = (tokenName || "").toLowerCase();
+  const symbolLower = (symbol || "").toLowerCase();
+  const websiteText = websiteData ? 
+    `${websiteData.title || ""} ${websiteData.metaDesc || ""} ${websiteData.shortText || ""}`.toLowerCase() : "";
+  
+  // Check for major exchange indicators
+  const exchangeIndicators = [
+    { name: "binance", keywords: ["binance", "bibi", "official binance", "binance official", "binance verified"] },
+    { name: "coinbase", keywords: ["coinbase", "official coinbase", "coinbase official", "coinbase verified"] },
+    { name: "okx", keywords: ["okx", "okex", "official okx", "okx official"] },
+    { name: "kraken", keywords: ["kraken", "official kraken", "kraken official"] },
+  ];
+  
+  for (const exchange of exchangeIndicators) {
+    for (const keyword of exchange.keywords) {
+      if (nameLower.includes(keyword) || 
+          symbolLower.includes(keyword) || 
+          websiteText.includes(keyword) ||
+          (socials?.x && socials.x.toLowerCase().includes(keyword))) {
+        console.log(`[Scoring] ✅ Detected official ${exchange.name.toUpperCase()} backing`);
+        return { exchange: exchange.name, confidence: "high" };
+      }
+    }
+  }
+  
+  // Check for "official" or "verified" in website/twitter
+  if (websiteText.includes("official") || websiteText.includes("verified")) {
+    if (websiteText.includes("binance") || nameLower.includes("binance") || symbolLower.includes("binance")) {
+      return { exchange: "binance", confidence: "medium" };
+    }
+  }
+  
+  return null;
+}
+
 function calculateTokenScore(tokenData) {
   let score = 30; // Start lower - be more conservative
   
-  const { marketData, fundamentals, securityData, socials, sentimentScore, blockchain } = tokenData;
+  const { marketData, fundamentals, securityData, socials, sentimentScore, blockchain, websiteData, tokenName, symbol } = tokenData;
+  
+  // Check for official exchange backing - MAJOR BONUS
+  const officialBacking = detectOfficialBacking(tokenName, symbol, websiteData, socials);
+  if (officialBacking) {
+    if (officialBacking.confidence === "high") {
+      score += 25; // Major exchange official token = huge boost
+      console.log(`[Scoring] Official ${officialBacking.exchange} backing detected: +25 points`);
+  } else {
+      score += 15; // Possible official backing
+      console.log(`[Scoring] Possible ${officialBacking.exchange} backing detected: +15 points`);
+    }
+  }
   
   // CRITICAL: Low liquidity is a major red flag - penalize heavily
+  // Note: For meme coins, $500K+ liquidity is actually huge and excellent
   if (marketData?.liquidity) {
     const liquidity = marketData.liquidity;
-    if (liquidity > 1000000) score += 12; // >$1M
-    else if (liquidity > 500000) score += 10; // >$500K
-    else if (liquidity > 100000) score += 7; // >$100K
-    else if (liquidity > 50000) score += 4; // >$50K
+    if (liquidity > 1000000) score += 13; // >$1M - excellent
+    else if (liquidity > 500000) score += 12; // >$500K - huge for meme coins, treat as excellent
+    else if (liquidity > 100000) score += 8; // >$100K - good for meme coins
+    else if (liquidity > 50000) score += 5; // >$50K - decent
     else if (liquidity > 10000) score += 2; // >$10K
     else if (liquidity > 5000) score += 1; // >$5K
     else {
@@ -670,41 +731,40 @@ function calculateTokenScore(tokenData) {
     score -= 20; // No liquidity = very bad
   }
   
-  // Holder Count Score - be stricter
-  if (fundamentals?.holderCount) {
-    const holders = fundamentals.holderCount;
-    if (holders > 10000) score += 10;
-    else if (holders > 5000) score += 8;
-    else if (holders > 1000) score += 6;
-    else if (holders > 500) score += 4;
-    else if (holders > 100) score += 2;
-    else if (holders > 50) score += 1;
-    else {
-      // Very few holders = red flag
-      score -= 10;
-    }
-  } else {
-    score -= 8; // Missing holder data = suspicious
-  }
+  // Holder Count Score - IGNORED for now due to unreliable data
+  // Holder data is often incorrect, so we don't penalize for missing or low holder counts
+  // if (fundamentals?.holderCount) {
+  //   const holders = fundamentals.holderCount;
+  //   if (holders > 10000) score += 10;
+  //   else if (holders > 5000) score += 8;
+  //   else if (holders > 1000) score += 6;
+  //   else if (holders > 500) score += 4;
+  //   else if (holders > 100) score += 2;
+  //   else if (holders > 50) score += 1;
+  // }
   
-  // Market Cap / Supply Score - require substantial market cap
-  if (fundamentals?.supply && marketData?.price) {
+  // Market Cap / Supply Score - use marketCap from marketData if available, otherwise calculate
+  let marketCap = marketData?.marketCap;
+  if (!marketCap && fundamentals?.supply && marketData?.price) {
     const supply = parseInt(fundamentals.supply) || 0;
     const price = parseFloat(marketData.price) || 0;
     const decimals = fundamentals.decimals || (blockchain === "bnb" ? 18 : 9);
-    const marketCap = (supply * price) / Math.pow(10, decimals);
-    
-    if (marketCap > 10000000) score += 8; // >$10M
-    else if (marketCap > 1000000) score += 6; // >$1M
-    else if (marketCap > 100000) score += 4; // >$100K
-    else if (marketCap > 10000) score += 2; // >$10K
-    else if (marketCap > 1000) score += 1;
+    marketCap = (supply * price) / Math.pow(10, decimals);
+  }
+  
+  if (marketCap) {
+    if (marketCap > 10000000) score += 10; // >$10M - excellent
+    else if (marketCap > 5000000) score += 8; // >$5M - very good
+    else if (marketCap > 1000000) score += 7; // >$1M - good
+    else if (marketCap > 500000) score += 5; // >$500K - decent for meme coins
+    else if (marketCap > 100000) score += 3; // >$100K
+    else if (marketCap > 10000) score += 1; // >$10K
     else {
       // Very low market cap = red flag
       score -= 5;
     }
   } else {
-    score -= 5; // Missing market cap data
+    score -= 3; // Missing market cap data (reduced penalty)
   }
   
   // Security Score - CRITICAL for safety
@@ -770,12 +830,18 @@ function calculateTokenScore(tokenData) {
     score -= 5; // No volume data
   }
   
-  // Sentiment Score - reduced weight
+  // Sentiment Score - important component
+  // Calculate fundamentals score first (before sentiment)
+  const fundamentalsScore = score;
+  
+  // Now add sentiment as a separate component
+  let sentimentComponent = 50; // Default neutral
   if (sentimentScore !== null && sentimentScore !== undefined) {
-    score += (sentimentScore / 100) * 8; // Reduced from 10
-  } else {
-    score -= 3; // Missing sentiment
+    sentimentComponent = sentimentScore;
   }
+  
+  // Final score is weighted average: 60% fundamentals, 40% sentiment
+  score = Math.round((fundamentalsScore * 0.6) + (sentimentComponent * 0.4));
   
   // HARD CAPS: Prevent high scores for tokens with red flags
   const liquidity = marketData?.liquidity || 0;
@@ -789,10 +855,7 @@ function calculateTokenScore(tokenData) {
     score = Math.min(score, 60);
   }
   
-  // Cap at 50 if holders are too few
-  if (holders < 100) {
-    score = Math.min(score, 50);
-  }
+  // Holder cap removed - holder data is unreliable
   
   // Cap at 40 if there are security risks
   if (hasRisks) {
@@ -807,11 +870,12 @@ function calculateTokenScore(tokenData) {
   // Require multiple strong indicators for scores above 70
   const strongIndicators = [
     liquidity > 100000,
-    holders > 1000,
+    // holders > 1000, // Removed - holder data unreliable
     !hasRisks,
     !hasMintAuth && !hasFreezeAuth,
     socials && (socials.website || socials.x || socials.telegram),
-    marketData?.volume24h > 100000
+    marketData?.volume24h > 100000,
+    marketCap > 1000000 // Market cap > $1M
   ].filter(Boolean).length;
   
   if (score > 70 && strongIndicators < 4) {
@@ -1509,7 +1573,7 @@ function generateProjectSummary(tokenData, rugCheckData, contractAddress) {
   summary += ` is a Solana-based token`;
   
   if (liquidity) {
-    summary += ` with $${(liquidity / 1000000).toFixed(2)}M in liquidity`;
+    summary += ` with ${formatLiquidityVolume(liquidity)} in liquidity`;
   }
   
   if (priceUsd) {
@@ -1689,6 +1753,9 @@ async function getTokenData(contractAddress) {
       socials,
       sentimentScore,
       blockchain, // Include blockchain for proper BNB vs Solana handling
+      websiteData, // Include website data for official backing detection
+      tokenName: dex?.name || fundamentals?.tokenName || null,
+      symbol: dex?.symbol || fundamentals?.tokenSymbol || null,
     };
     
     const tokenScore = calculateTokenScore(tokenScoreData);
@@ -1762,7 +1829,7 @@ Sentiment Score: ${sentimentScore || "N/A"}
         liquidity: birdeye?.liquidity || dex?.liquidity || null,
         priceChange24h: birdeye?.priceChange24h || dex?.priceChange24h || null,
         dexUrl: dex?.dexUrl || null,
-        marketCap: marketCap,
+        marketCap: dex?.marketCap || marketCap, // Prefer DexScreener marketCap, fallback to calculated
       },
       fundamentals: {
         ...fundamentals,
@@ -1861,20 +1928,27 @@ Look for:
 - Technology or innovation being referenced
 - Any real-world narratives being leveraged
 - Claims about utility, use cases, or real-world applications
+- EXCHANGE ASSOCIATION (Binance, Coinbase, etc.) - if the website content indicates this, it's important
 
 The website content is particularly important - analyze it carefully for:
-- Official claims about the project
-- Partnerships or integrations mentioned
+- Claims about the project
+- Partnerships or integrations mentioned (especially major exchanges)
 - Technology or features described
 - Roadmap or future plans
 - Team or organization information
+- Exchange association or verification mentioned in the content
+
+If the website content indicates exchange association, mention this naturally but NEVER use the word "official". Use neutral language like "associated with [Exchange]" or "[Exchange] mascot token" or "linked to [Exchange]". For example, if it's Binance's mascot token (like Bibi), say "Binance's mascot token" or "associated with Binance" - NOT "official".
 
 Return:
 1. A clear, specific narrative claim (what real-world story is this token using?)
+   - If the website content shows exchange association, mention it naturally: "This is [Exchange]'s mascot token" or "Associated with [Exchange]" - NEVER say "official"
+   - Use neutral, factual language without claiming official status
 2. Entities involved (organizations, products, people, events)
 3. Key topics and themes
 
 If the token has no clear narrative beyond "it's a meme token", say so.
+However, if the website content indicates exchange association, this may be more than just a meme token - it could be an exchange mascot token or associated with an exchange. Mention this naturally but NEVER claim it's "official".
 
 Return STRICT JSON only.
 
@@ -2161,36 +2235,52 @@ async function generateSummary({ narrativeClaim, verdict, tokenData, tokenName }
       tweetContext = `\n\nRECENT TWEETS ABOUT THIS TOKEN:\n${tweetSummaries}`;
     }
     
+    // Check for official backing
+    const websiteData = tokenData?.websiteData;
+    const symbol = tokenData?.symbol;
+    const officialBacking = detectOfficialBacking(tokenNameValue, symbol, websiteData, tokenData?.socials);
+    
     const dataLines = [`- Score: ${score}/100`, `- Sentiment: ${sentiment}/100`];
     if (holders) dataLines.push(`- Holders: ${holders.toLocaleString()}`);
-    if (liquidity) dataLines.push(`- Liquidity: $${(liquidity / 1000000).toFixed(2)}M`);
-    if (volume24h) dataLines.push(`- 24h Volume: $${(volume24h / 1000000).toFixed(2)}M`);
+    if (liquidity) dataLines.push(`- Liquidity: ${formatLiquidityVolume(liquidity)}`);
+    if (volume24h) dataLines.push(`- 24h Volume: ${formatLiquidityVolume(volume24h)}`);
     if (priceChange !== null) dataLines.push(`- 24h Price Change: ${priceChange > 0 ? "+" : ""}${priceChange.toFixed(2)}%`);
     if (narrativeClaim) dataLines.push(`- Narrative: ${narrativeClaim}`);
+    if (officialBacking) {
+      dataLines.push(`- Exchange Association: ${officialBacking.exchange.toUpperCase()} (${officialBacking.confidence} confidence) - DO NOT claim this is "official"`);
+    }
+    if (websiteData) {
+      dataLines.push(`- Website: ${websiteData.title || 'Available'} - ${websiteData.shortText?.substring(0, 200) || ''}`);
+    }
     
     const prompt = `
-You are an expert cryptocurrency analyst. Provide an insightful summary for ${tokenNameValue}.
+You are a professional crypto analyst writing a clear, informative summary. Write in a balanced tone - professional but not overly formal, informative but not dry.
 
-Format EXACTLY as follows:
-1. Two sentences - analyze what makes this token unique based on the data provided. Use **bold** for key insights.
-2. Three bullet points - one line each, use **bold** for key metrics
+Analyze the website content and token data carefully. If the website or token information indicates association with a major exchange (like Binance, Coinbase, etc.), mention this naturally but DO NOT claim it's "official" - we cannot verify official status. Use neutral language like "associated with", "linked to", or "mascot token" without claiming official backing.
 
-AVAILABLE DATA:
+Format:
+1. Two sentences - what makes this token notable. Use **bold** for key points. Be informative and clear.
+2. Three bullet points - one line each, **bold** the important numbers
+
+DATA:
 ${dataLines.join('\n')}${tweetContext}
 
-CRITICAL RULES:
-- ONLY analyze data that is provided above - DO NOT mention missing data or say "unknown"
-- NEVER mention "Solana blockchain" or "uses Solana" - obvious
-- NEVER mention "UNVERIFIED" status
-- Focus on what the available data reveals, not what's missing
-- Provide actionable insights based on actual metrics
+RULES:
+- Write professionally but naturally - avoid overly casual phrases like "cool vibe", "not too shabby", "people are really getting into it", "pretty hyped"
+- Also avoid corporate jargon like 'boasts', 'significantly enhances', 'positions as', 'institutional support'
+- NEVER use the word "official" - we cannot verify official status. Use neutral language like "associated with Binance" or "Binance mascot token" or "linked to Binance" instead
+- Analyze the website content and data to determine if there's exchange association - only mention it if the data clearly shows it
+- ONLY use data provided - don't mention missing data or make assumptions
+- Don't mention "Solana blockchain" - obvious
+- Don't mention "UNVERIFIED" status
+- Focus on facts and metrics, not opinions or casual observations
 
-Structure:
-[Two sentences with **bold** for insights]
+Write like this:
+[Two informative sentences with **bold** for key points]
 
-• [Bullet 1 - one line, **bold** key terms]
-• [Bullet 2 - one line, **bold** key terms]
-• [Bullet 3 - one line, **bold** key terms]
+• [Bullet 1 - clear statement, **bold** numbers]
+• [Bullet 2 - clear statement, **bold** numbers]
+• [Bullet 3 - clear statement, **bold** numbers]
 `;
 
     console.log(`[Summary] Calling OpenAI...`);
@@ -2226,26 +2316,41 @@ async function generateFundamentals({ tokenData, verdict, reasoning }) {
     const hasFreezeAuth = tokenData?.fundamentals?.freezeAuthority || null;
     const risks = tokenData?.securityData?.risks?.length || 0;
     
+    // Check for official backing
+    const websiteData = tokenData?.websiteData;
+    const tokenName = tokenData?.tokenName;
+    const symbol = tokenData?.symbol;
+    const officialBacking = detectOfficialBacking(tokenName, symbol, websiteData, tokenData?.socials);
+    
     const fundDataLines = [`- Score: ${score}/100`];
     if (holders) fundDataLines.push(`- Holders: ${holders.toLocaleString()}`);
-    if (liquidity) fundDataLines.push(`- Liquidity: $${(liquidity / 1000000).toFixed(2)}M`);
-    if (volume24h) fundDataLines.push(`- Volume (24h): $${(volume24h / 1000000).toFixed(2)}M`);
+    if (liquidity) fundDataLines.push(`- Liquidity: ${formatLiquidityVolume(liquidity)}`);
+    if (volume24h) fundDataLines.push(`- Volume (24h): ${formatLiquidityVolume(volume24h)}`);
     fundDataLines.push(`- Security: ${!hasMintAuth && !hasFreezeAuth ? "✓ Clean (no mint/freeze)" : "⚠ " + (hasMintAuth ? "Mint authority" : "") + (hasFreezeAuth ? " Freeze authority" : "")}`);
     if (risks > 0) fundDataLines.push(`- Risk flags: ${risks}`);
+    if (officialBacking) {
+      fundDataLines.push(`- Exchange Association: ${officialBacking.exchange.toUpperCase()} (${officialBacking.confidence} confidence) - DO NOT claim this is "official"`);
+    }
     
     const prompt = `
-Analyze token fundamentals. Provide insights in 2 sentences max.
+Analyze the fundamentals. Write 2 sentences in a natural, conversational way.
 
-AVAILABLE DATA:
+Look at the data provided - if there's information about exchange association in the data, mention it naturally but NEVER use the word "official". Use neutral language like "associated with" or "linked to". Don't assume or make things up.
+
+DATA:
 ${fundDataLines.join('\n')}
 
 RULES:
-- ONLY discuss data provided above - never mention missing/unknown data
-- NEVER mention "Solana" or blockchain basics
-- Use **bold** for key metrics and conclusions
-- Connect the metrics - what do they reveal together?
+- Write naturally - avoid corporate jargon like 'boasts', 'significantly', 'positions', 'institutional support'
+- NEVER use the word "official" - use neutral language like "associated with" or "linked to" instead
+- Use simple, direct language - analyze the data and mention exchange association only if the data clearly shows it
+- ONLY use data provided - don't mention missing data or make assumptions
+- Don't mention "Solana" - obvious
+- Use **bold** for key numbers
+- Connect the numbers - what story do they tell?
+- If the data shows exchange association, mention it casually like 'This is [Exchange]'s mascot token' or 'Associated with [Exchange]' - NEVER say "official" - keep it natural
 
-Provide 2 concise, insightful sentences.
+Write 2 casual sentences based on the actual data provided.
 `;
 
     console.log(`[Fundamentals] Calling OpenAI...`);
@@ -2317,7 +2422,7 @@ DATA:
 - 24h volume: ${volume24h ? `$${(volume24h / 1000000).toFixed(2)}M` : "unknown"}
 - Price change (24h): ${priceChange !== null ? `${priceChange > 0 ? "+" : ""}${priceChange.toFixed(2)}%` : "unknown"}
 - Holders: ${holders ? holders.toLocaleString() : "unknown"}
-- Liquidity: ${liquidity ? `$${(liquidity / 1000000).toFixed(2)}M` : "unknown"}
+- Liquidity: ${liquidity ? formatLiquidityVolume(liquidity) : "unknown"}
 - Narrative: ${narrativeClaim.substring(0, 200)}...${tweetAnalysis}
 
 CRITICAL ANALYSIS REQUIRED:

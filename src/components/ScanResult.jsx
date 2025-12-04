@@ -378,15 +378,15 @@ function ScanResult({ result }) {
 
   return (
     <>
-      <section className="scan-result">
-        <div className="result-header">
-          <div className="result-header-main">
-            <h2>
-              {tokenName || "Unknown Token"} {symbol && <span className="symbol">({symbol})</span>}
-            </h2>
-            <p className="ca">{contractAddress}</p>
-          </div>
-          <div className="result-header-aside">
+    <section className="scan-result">
+      <div className="result-header">
+        <div className="result-header-main">
+          <h2>
+            {tokenName || "Unknown Token"} {symbol && <span className="symbol">({symbol})</span>}
+          </h2>
+          <p className="ca">{contractAddress}</p>
+        </div>
+        <div className="result-header-aside">
             <button 
               onClick={() => setShowModal(true)}
               className="btn-view-full-analysis"
@@ -399,10 +399,10 @@ function ScanResult({ result }) {
               Full Analysis
             </button>
             {tokenScore !== undefined && tokenScore !== null ? (
-              <div className="score-display">
-                <ScoreCircle score={tokenScore} />
-                <span className="score-label-text">Overall Score</span>
-              </div>
+            <div className="score-display">
+              <ScoreCircle score={tokenScore} />
+              <span className="score-label-text">Overall Score</span>
+            </div>
             ) : (
               <div className="score-display">
                 <div className="score-loading">
@@ -414,12 +414,12 @@ function ScanResult({ result }) {
                 </div>
                 <span className="score-label-text">Calculating Score...</span>
               </div>
-            )}
-            <div className="verdict-block">
-              {cached && <span className="cached-tag">cached</span>}
-            </div>
+          )}
+          <div className="verdict-block">
+            {cached && <span className="cached-tag">cached</span>}
           </div>
         </div>
+      </div>
 
       <div className="result-actions">
         <a 
@@ -442,8 +442,8 @@ function ScanResult({ result }) {
       </div>
 
       {/* Analysis Sections - Show loading states when streaming */}
-      <div className="analysis-section summary-section">
-        <h3 className="analysis-section-title">SUMMARY</h3>
+        <div className="analysis-section summary-section">
+          <h3 className="analysis-section-title">SUMMARY</h3>
         {summary ? (
           <div className="analysis-text">
             {summary.split('\n').map((line, idx) => {
@@ -550,14 +550,14 @@ function ScanResult({ result }) {
         ) : null}
       </div>
 
-      <div className="analysis-section hype-section">
-        <h3 className="analysis-section-title">HYPE</h3>
+        <div className="analysis-section hype-section">
+          <h3 className="analysis-section-title">HYPE</h3>
         {hypeAnalysis ? (
           <p className="analysis-text">{renderWithBold(hypeAnalysis)}</p>
         ) : _streaming ? (
           <SectionLoader text="Analyzing market sentiment..." />
         ) : null}
-      </div>
+        </div>
 
       {/* Legacy support for old cached results */}
       {!summary && !fundamentalsAnalysis && !hypeAnalysis && notesForUser && (
@@ -738,6 +738,11 @@ function ScanResult({ result }) {
               <h2>
                 Full Analysis: {tokenName || "Unknown Token"} {symbol && <span className="symbol">({symbol})</span>}
               </h2>
+              {contractAddress && (
+                <p className="modal-contract-address" style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#888', fontFamily: 'monospace' }}>
+                  Contract: {contractAddress}
+                </p>
+              )}
             </div>
             <div className="analysis-modal-header-right">
               {tokenScore !== undefined && tokenScore !== null ? (

@@ -683,11 +683,11 @@ function calculateTokenScore(tokenData) {
       if (tokenData.blockchain === "solana") {
         if (fundamentals?.mintAuthority === null && fundamentals?.freezeAuthority === null) {
           score += 3; // No mint/freeze authority = good (reduced from 5)
-        }
-        if (fundamentals?.mintAuthority) {
+      }
+      if (fundamentals?.mintAuthority) {
           score -= 15; // Has mint authority = MAJOR risk (was -8)
-        }
-        if (fundamentals?.freezeAuthority) {
+      }
+      if (fundamentals?.freezeAuthority) {
           score -= 15; // Has freeze authority = MAJOR risk (was -8)
         }
       }
@@ -969,7 +969,7 @@ async function getTwitterFromNitter(twitterUrl) {
   }
 
   console.log(`[Nitter Scraper] Extracted username: ${username}`);
-
+    
   if (!SCRAPINGBEE_API_KEY) {
     console.log(`[Nitter Scraper] SCRAPINGBEE_KEY not set, skipping`);
       return null;
@@ -1061,7 +1061,7 @@ async function getTwitterFromNitter(twitterUrl) {
             replies: parseInt(replies) || 0,
             tweetId,
             tweetUrl,
-          });
+      });
         }
       });
 
