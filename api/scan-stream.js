@@ -8,30 +8,63 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const SCRAPINGBEE_API_KEY = process.env.SCRAPINGBEE_KEY;
 const SCRAPINGBEE_BASE_URL = 'https://app.scrapingbee.com/api/v1/';
 
-// Fetch HTML from ScrapingBee
+// ScrapingBee concurrency limiter (max 4 concurrent to stay under limit of 5)
+let scrapingBeeQueue = [];
+let activeScrapingBeeRequests = 0;
+const MAX_CONCURRENT_SCRAPINGBEE = 4;
+
+async function waitForScrapingBeeSlot() {
+  return new Promise((resolve) => {
+    if (activeScrapingBeeRequests < MAX_CONCURRENT_SCRAPINGBEE) {
+      activeScrapingBeeRequests++;
+      resolve();
+    } else {
+      scrapingBeeQueue.push(resolve);
+    }
+  });
+}
+
+function releaseScrapingBeeSlot() {
+  activeScrapingBeeRequests--;
+  if (scrapingBeeQueue.length > 0) {
+    const next = scrapingBeeQueue.shift();
+    activeScrapingBeeRequests++;
+    next();
+  }
+}
+
+// Fetch HTML from ScrapingBee with concurrency limiting
 async function fetchWithScrapingBee(url) {
   if (!SCRAPINGBEE_API_KEY) {
     throw new Error('SCRAPINGBEE_KEY environment variable is not set');
   }
 
-  const apiUrl = `${SCRAPINGBEE_BASE_URL}?api_key=${SCRAPINGBEE_API_KEY}&url=${encodeURIComponent(url)}&render_js=true&premium_proxy=true`;
+  // Wait for available slot
+  await waitForScrapingBeeSlot();
   
-  const response = await fetch(apiUrl, {
-    method: 'GET',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    },
-  });
+  try {
+    const apiUrl = `${SCRAPINGBEE_BASE_URL}?api_key=${SCRAPINGBEE_API_KEY}&url=${encodeURIComponent(url)}&render_js=true&premium_proxy=true`;
+    
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    if (response.status === 401) {
-      throw new Error(`ScrapingBee API authentication failed (401). Please check your SCRAPINGBEE_KEY environment variable. ${errorText ? `Details: ${errorText.substring(0, 100)}` : ''}`);
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      if (response.status === 401) {
+        throw new Error(`ScrapingBee API authentication failed (401). Please check your SCRAPINGBEE_KEY environment variable. ${errorText ? `Details: ${errorText.substring(0, 100)}` : ''}`);
+      }
+      throw new Error(`ScrapingBee API error: ${response.status} ${response.statusText}${errorText ? ` - ${errorText.substring(0, 100)}` : ''}`);
     }
-    throw new Error(`ScrapingBee API error: ${response.status} ${response.statusText}${errorText ? ` - ${errorText.substring(0, 100)}` : ''}`);
-  }
 
-  return await response.text();
+    return await response.text();
+  } finally {
+    // Always release the slot
+    releaseScrapingBeeSlot();
+  }
 }
 
 // Helper: Detect blockchain from address format
