@@ -1190,6 +1190,46 @@ async function scrapeWebsite(websiteUrl) {
     return null;
   }
 
+  // Check if URL is x.com or twitter.com - route to Twitter scraper instead
+  const isTwitterUrl = /^(https?:\/\/)?(www\.)?(x\.com|twitter\.com)/i.test(websiteUrl);
+  if (isTwitterUrl) {
+    console.log(`[Website] Detected Twitter/X.com URL, routing to Twitter scraper...`);
+    
+    // Extract username from URL (handles both profile and tweet URLs)
+    // Examples: x.com/username, x.com/username/status/123456, twitter.com/username
+    const twitterMatch = websiteUrl.match(/(?:twitter\.com|x\.com)\/([^\/\?]+)/);
+    const username = twitterMatch ? twitterMatch[1] : null;
+    
+    if (username && username !== 'status' && username !== 'i' && username !== 'search') {
+      // Route to Twitter scraper
+      const twitterData = await getTwitterFromNitter(websiteUrl);
+      
+      if (twitterData && twitterData.tweets && twitterData.tweets.length > 0) {
+        // Convert Twitter data to website-like format for compatibility
+        const topTweet = twitterData.topTweet || twitterData.tweets[0];
+        const tweetTexts = twitterData.tweets.slice(0, 3).map(t => t.text || '').filter(Boolean);
+        const result = {
+          url: websiteUrl,
+          title: `Twitter: @${username}`,
+          metaDesc: (topTweet && topTweet.text) ? topTweet.text.substring(0, 200) : '',
+          shortText: tweetTexts.join('\n\n'),
+          headings: [],
+          twitterData: twitterData, // Include full Twitter data
+        };
+        
+        const duration = Date.now() - startTime;
+        console.log(`[Website] ✅ Twitter data extracted: ${twitterData.tweets.length} tweets - ${duration}ms`);
+        return result;
+      } else {
+        console.log(`[Website] Twitter scraper returned no data for ${websiteUrl}`);
+        return null;
+      }
+    } else {
+      console.log(`[Website] Could not extract valid username from Twitter URL: ${websiteUrl}`);
+      return null;
+    }
+  }
+
   // Method 1: Try allorigins proxy (more reliable than corsproxy)
   try {
     const proxied = `https://api.allorigins.win/raw?url=${encodeURIComponent(websiteUrl)}`;
@@ -1325,7 +1365,7 @@ function generateProjectSummary(tokenData, rugCheckData, contractAddress) {
     return summary;
   }
   
-  const { tokenName, symbol, socials, priceUsd, liquidity } = tokenData;
+  const { tokenName, symbol, socials, priceUsd, liquidity, twitterData, tickerTweets, websiteData } = tokenData;
   
   let summary = `Token ${symbol}`;
   
@@ -1344,6 +1384,39 @@ function generateProjectSummary(tokenData, rugCheckData, contractAddress) {
   }
   
   summary += `.`;
+  
+  // Include website content if available
+  if (websiteData && websiteData.title) {
+    summary += ` The project website (${websiteData.url || 'available'}) indicates: ${websiteData.title}`;
+    if (websiteData.metaDesc) {
+      summary += ` - ${websiteData.metaDesc.substring(0, 200)}`;
+    }
+    if (websiteData.shortText) {
+      summary += ` Additional website content: ${websiteData.shortText.substring(0, 300)}`;
+    }
+    summary += `.`;
+  }
+  
+  // Include Twitter/X content prominently
+  const allTweets = [
+    ...(twitterData?.tweets || []),
+    ...(tickerTweets?.tweets || [])
+  ];
+  
+  if (allTweets.length > 0) {
+    summary += ` Recent Twitter/X posts about this token include:`;
+    // Include up to 5 most relevant tweets with full content
+    allTweets.slice(0, 5).forEach((tweet, idx) => {
+      const tweetText = tweet.text || tweet.content || '';
+      if (tweetText) {
+        summary += ` Post ${idx + 1}: "${tweetText.substring(0, 250)}"`;
+        if (tweet.likes || tweet.retweets) {
+          summary += ` (${tweet.likes || 0} likes, ${tweet.retweets || 0} retweets)`;
+        }
+        summary += `.`;
+      }
+    });
+  }
   
   if (socials && (socials.website || socials.x || socials.telegram)) {
     summary += ` The project maintains`;
@@ -1908,13 +1981,16 @@ async function generateSummary({ narrativeClaim, verdict, tokenData, tokenName }
     
     let tweetContext = "";
     if (allTweets.length > 0) {
+      // Include full tweet content, not truncated
       const tweetSummaries = allTweets.map((tweet, idx) => {
         const text = tweet.text || tweet.content || "";
         const likes = tweet.likes || tweet.likeCount || 0;
         const retweets = tweet.retweets || tweet.retweetCount || 0;
-        return `${idx + 1}. "${text.substring(0, 150)}..." (${likes} likes, ${retweets} retweets)`;
+        const username = tweet.username || tweet.author || 'Unknown';
+        // Include full tweet text for better AI analysis
+        return `${idx + 1}. @${username}: "${text}" (${likes} likes, ${retweets} retweets)`;
       }).join("\n");
-      tweetContext = `\n\nRECENT TWEETS ABOUT THIS TOKEN:\n${tweetSummaries}`;
+      tweetContext = `\n\nRECENT TWEETS ABOUT THIS TOKEN (${allTweets.length} posts):\n${tweetSummaries}`;
     }
     
     // Build data section dynamically - only include available data
@@ -2252,6 +2328,7 @@ export default async function handler(req, res) {
     const socialContext = JSON.stringify({
       website: tokenData.websiteData,
       twitter: tokenData.twitterData,
+      tickerTweets: tokenData.tickerTweets, // Include ticker search tweets
       telegram: tokenData.telegramData,
     });
     console.log(`[Handler] Prepared social context for narrative extraction`);

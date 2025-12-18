@@ -112,44 +112,96 @@ async function getWebsiteFromFourMeme(contractAddress) {
     // Look for website links in various places
     let websiteUrl = null;
     
-    // Method 1: Look for links in the token info section (the div with bg-darkGray900)
-    const tokenInfoSection = $('.bg-darkGray900, [class*="darkGray900"]').first();
-    if (tokenInfoSection.length > 0) {
-      tokenInfoSection.find('a[href]').each((i, elem) => {
-        const href = $(elem).attr('href');
-        if (href) {
-          // Convert relative URLs to absolute
-          let fullUrl = href;
-          if (href.startsWith('/')) {
-            fullUrl = `https://four.meme${href}`;
-          } else if (!href.startsWith('http://') && !href.startsWith('https://')) {
-            fullUrl = `https://${href}`;
+    // Method 1: Look for links with "website" or "site" in text or aria-label
+    $('a[href]').each((i, elem) => {
+      const $elem = $(elem);
+      const linkText = $elem.text().toLowerCase();
+      const ariaLabel = ($elem.attr('aria-label') || '').toLowerCase();
+      const href = $elem.attr('href');
+      
+      if (href && (linkText.includes('website') || linkText.includes('site') || 
+                   linkText.includes('web') || ariaLabel.includes('website') || 
+                   ariaLabel.includes('site'))) {
+        let fullUrl = href;
+        if (href.startsWith('/')) {
+          fullUrl = `https://four.meme${href}`;
+        } else if (!href.startsWith('http://') && !href.startsWith('https://')) {
+          fullUrl = `https://${href}`;
+        }
+        
+        if (fullUrl.startsWith('http://') || fullUrl.startsWith('https://')) {
+          const urlLower = fullUrl.toLowerCase();
+          // Strictly exclude four.meme and all common non-website links
+          if (!urlLower.includes('twitter.com') && 
+              !urlLower.includes('x.com') && 
+              !urlLower.includes('telegram.org') && 
+              !urlLower.includes('t.me') &&
+              !urlLower.includes('dexscreener.com') &&
+              !urlLower.includes('bscscan.com') &&
+              !urlLower.includes('four.meme') &&
+              !urlLower.includes('fourmeme') &&
+              !urlLower.match(/four[.\-]?meme/i) &&
+              !urlLower.includes('github.com') &&
+              !urlLower.includes('discord.com') &&
+              !urlLower.includes('medium.com') &&
+              !urlLower.includes('reddit.com') &&
+              !urlLower.includes('etherscan.io') &&
+              !urlLower.includes('solscan.io') &&
+              !urlLower.includes('solana.com')) {
+            websiteUrl = fullUrl;
+            return false; // break
           }
-          
+        }
+      }
+    });
+    
+    // Method 1b: Look for links in the token info section (the div with bg-darkGray900)
+    if (!websiteUrl) {
+      const tokenInfoSection = $('.bg-darkGray900, [class*="darkGray900"]').first();
+      if (tokenInfoSection.length > 0) {
+        tokenInfoSection.find('a[href]').each((i, elem) => {
+          const href = $(elem).attr('href');
+          if (href) {
+            // Convert relative URLs to absolute
+            let fullUrl = href;
+            if (href.startsWith('/')) {
+              fullUrl = `https://four.meme${href}`;
+            } else if (!href.startsWith('http://') && !href.startsWith('https://')) {
+              fullUrl = `https://${href}`;
+            }
+            
           if (fullUrl.startsWith('http://') || fullUrl.startsWith('https://')) {
-            // Skip common non-website links
-            if (!fullUrl.includes('twitter.com') && 
-                !fullUrl.includes('x.com') && 
-                !fullUrl.includes('telegram.org') && 
-                !fullUrl.includes('t.me') &&
-                !fullUrl.includes('dexscreener.com') &&
-                !fullUrl.includes('bscscan.com') &&
-                !fullUrl.includes('four.meme') &&
-                !fullUrl.includes('github.com') &&
-                !fullUrl.includes('discord.com') &&
-                !fullUrl.includes('medium.com') &&
-                !fullUrl.includes('reddit.com')) {
+            const urlLower = fullUrl.toLowerCase();
+            // Strictly exclude four.meme and all common non-website links
+            if (!urlLower.includes('twitter.com') && 
+                !urlLower.includes('x.com') && 
+                !urlLower.includes('telegram.org') && 
+                !urlLower.includes('t.me') &&
+                !urlLower.includes('dexscreener.com') &&
+                !urlLower.includes('bscscan.com') &&
+                !urlLower.includes('four.meme') &&
+                !urlLower.includes('fourmeme') &&
+                !urlLower.match(/four[.\-]?meme/i) &&
+                !urlLower.includes('github.com') &&
+                !urlLower.includes('discord.com') &&
+                !urlLower.includes('medium.com') &&
+                !urlLower.includes('reddit.com') &&
+                !urlLower.includes('etherscan.io') &&
+                !urlLower.includes('solscan.io') &&
+                !urlLower.includes('solana.com')) {
               // This might be the website
               if (!websiteUrl) {
                 websiteUrl = fullUrl;
+                return false; // break
               }
             }
           }
-        }
-      });
+          }
+        });
+      }
     }
     
-    // Method 1b: If not found in token section, search all links
+    // Method 1c: Search all links more aggressively - look for external links
     if (!websiteUrl) {
       $('a[href]').each((i, elem) => {
         const href = $(elem).attr('href');
@@ -163,7 +215,7 @@ async function getWebsiteFromFourMeme(contractAddress) {
           }
           
           if (fullUrl.startsWith('http://') || fullUrl.startsWith('https://')) {
-            // Skip common non-website links
+            // Skip common non-website links and four.meme itself
             if (!fullUrl.includes('twitter.com') && 
                 !fullUrl.includes('x.com') && 
                 !fullUrl.includes('telegram.org') && 
@@ -174,9 +226,12 @@ async function getWebsiteFromFourMeme(contractAddress) {
                 !fullUrl.includes('github.com') &&
                 !fullUrl.includes('discord.com') &&
                 !fullUrl.includes('medium.com') &&
-                !fullUrl.includes('reddit.com')) {
-              // This might be the website
-              if (!websiteUrl) {
+                !fullUrl.includes('reddit.com') &&
+                !fullUrl.includes('etherscan.io') &&
+                !fullUrl.includes('solscan.io') &&
+                !fullUrl.includes('solana.com')) {
+              // This might be the website - prioritize links that look like domains
+              if (!websiteUrl || (fullUrl.match(/^https?:\/\/[^\/]+$/))) {
                 websiteUrl = fullUrl;
               }
             }
@@ -213,6 +268,30 @@ async function getWebsiteFromFourMeme(contractAddress) {
     }
     
     const duration = Date.now() - startTime;
+    
+    // Final validation: Make absolutely sure we're not returning four.meme
+    if (websiteUrl) {
+      // Check if the URL is actually four.meme (in any form)
+      const urlLower = websiteUrl.toLowerCase();
+      if (urlLower.includes('four.meme') || 
+          urlLower.includes('fourmeme') ||
+          urlLower.match(/four[.\-]?meme/i)) {
+        console.log(`[FourMeme] ⚠️  Rejected four.meme URL: ${websiteUrl}`);
+        websiteUrl = null;
+      } else {
+        // Extract domain to verify it's not four.meme
+        try {
+          const urlObj = new URL(websiteUrl);
+          const hostname = urlObj.hostname.toLowerCase();
+          if (hostname.includes('four.meme') || hostname.includes('fourmeme')) {
+            console.log(`[FourMeme] ⚠️  Rejected four.meme domain: ${hostname}`);
+            websiteUrl = null;
+          }
+        } catch (e) {
+          // URL parsing failed, but we already validated it starts with http/https
+        }
+      }
+    }
     
     if (websiteUrl) {
       console.log(`[FourMeme] ✅ Found website: ${websiteUrl} - ${duration}ms`);
@@ -929,6 +1008,46 @@ async function scrapeWebsite(websiteUrl) {
   if (!websiteUrl) {
     console.log(`[Website] No website URL provided`);
     return null;
+  }
+
+  // Check if URL is x.com or twitter.com - route to Twitter scraper instead
+  const isTwitterUrl = /^(https?:\/\/)?(www\.)?(x\.com|twitter\.com)/i.test(websiteUrl);
+  if (isTwitterUrl) {
+    console.log(`[Website] Detected Twitter/X.com URL, routing to Twitter scraper...`);
+    
+    // Extract username from URL (handles both profile and tweet URLs)
+    // Examples: x.com/username, x.com/username/status/123456, twitter.com/username
+    const twitterMatch = websiteUrl.match(/(?:twitter\.com|x\.com)\/([^\/\?]+)/);
+    const username = twitterMatch ? twitterMatch[1] : null;
+    
+    if (username && username !== 'status' && username !== 'i' && username !== 'search') {
+      // Route to Twitter scraper
+      const twitterData = await getTwitterFromNitter(websiteUrl);
+      
+      if (twitterData && twitterData.tweets && twitterData.tweets.length > 0) {
+        // Convert Twitter data to website-like format for compatibility
+        const topTweet = twitterData.topTweet || twitterData.tweets[0];
+        const tweetTexts = twitterData.tweets.slice(0, 3).map(t => t.text || '').filter(Boolean);
+        const result = {
+          url: websiteUrl,
+          title: `Twitter: @${username}`,
+          metaDesc: (topTweet && topTweet.text) ? topTweet.text.substring(0, 200) : '',
+          shortText: tweetTexts.join('\n\n'),
+          headings: [],
+          twitterData: twitterData, // Include full Twitter data
+        };
+        
+        const duration = Date.now() - startTime;
+        console.log(`[Website] ✅ Twitter data extracted: ${twitterData.tweets.length} tweets - ${duration}ms`);
+        return result;
+      } else {
+        console.log(`[Website] Twitter scraper returned no data for ${websiteUrl}`);
+        return null;
+      }
+    } else {
+      console.log(`[Website] Could not extract valid username from Twitter URL: ${websiteUrl}`);
+      return null;
+    }
   }
 
   // Method 1: Try ScrapingBee first (best for Cloudflare-protected sites)

@@ -1264,44 +1264,96 @@ async function getWebsiteFromFourMeme(contractAddress) {
     // Common patterns: href attributes, social links, etc.
     let websiteUrl = null;
     
-    // Method 1: Look for links in the token info section (the div with bg-darkGray900)
-    const tokenInfoSection = $('.bg-darkGray900, [class*="darkGray900"]').first();
-    if (tokenInfoSection.length > 0) {
-      tokenInfoSection.find('a[href]').each((i, elem) => {
-        const href = $(elem).attr('href');
-        if (href) {
-          // Convert relative URLs to absolute
-          let fullUrl = href;
-          if (href.startsWith('/')) {
-            fullUrl = `https://four.meme${href}`;
-          } else if (!href.startsWith('http://') && !href.startsWith('https://')) {
-            fullUrl = `https://${href}`;
+    // Method 1: Look for links with "website" or "site" in text or aria-label
+    $('a[href]').each((i, elem) => {
+      const $elem = $(elem);
+      const linkText = $elem.text().toLowerCase();
+      const ariaLabel = ($elem.attr('aria-label') || '').toLowerCase();
+      const href = $elem.attr('href');
+      
+      if (href && (linkText.includes('website') || linkText.includes('site') || 
+                   linkText.includes('web') || ariaLabel.includes('website') || 
+                   ariaLabel.includes('site'))) {
+        let fullUrl = href;
+        if (href.startsWith('/')) {
+          fullUrl = `https://four.meme${href}`;
+        } else if (!href.startsWith('http://') && !href.startsWith('https://')) {
+          fullUrl = `https://${href}`;
+        }
+        
+        if (fullUrl.startsWith('http://') || fullUrl.startsWith('https://')) {
+          const urlLower = fullUrl.toLowerCase();
+          // Strictly exclude four.meme and all common non-website links
+          if (!urlLower.includes('twitter.com') && 
+              !urlLower.includes('x.com') && 
+              !urlLower.includes('telegram.org') && 
+              !urlLower.includes('t.me') &&
+              !urlLower.includes('dexscreener.com') &&
+              !urlLower.includes('bscscan.com') &&
+              !urlLower.includes('four.meme') &&
+              !urlLower.includes('fourmeme') &&
+              !urlLower.match(/four[.\-]?meme/i) &&
+              !urlLower.includes('github.com') &&
+              !urlLower.includes('discord.com') &&
+              !urlLower.includes('medium.com') &&
+              !urlLower.includes('reddit.com') &&
+              !urlLower.includes('etherscan.io') &&
+              !urlLower.includes('solscan.io') &&
+              !urlLower.includes('solana.com')) {
+            websiteUrl = fullUrl;
+            return false; // break
           }
-          
-          if (fullUrl.startsWith('http://') || fullUrl.startsWith('https://')) {
-            // Skip common non-website links
-            if (!fullUrl.includes('twitter.com') && 
-                !fullUrl.includes('x.com') && 
-                !fullUrl.includes('telegram.org') && 
-                !fullUrl.includes('t.me') &&
-                !fullUrl.includes('dexscreener.com') &&
-                !fullUrl.includes('bscscan.com') &&
-                !fullUrl.includes('four.meme') &&
-                !fullUrl.includes('github.com') &&
-                !fullUrl.includes('discord.com') &&
-                !fullUrl.includes('medium.com') &&
-                !fullUrl.includes('reddit.com')) {
-              // This might be the website
-              if (!websiteUrl) {
-                websiteUrl = fullUrl;
+        }
+      }
+    });
+    
+    // Method 1b: Look for links in the token info section (the div with bg-darkGray900)
+    if (!websiteUrl) {
+      const tokenInfoSection = $('.bg-darkGray900, [class*="darkGray900"]').first();
+      if (tokenInfoSection.length > 0) {
+        tokenInfoSection.find('a[href]').each((i, elem) => {
+          const href = $(elem).attr('href');
+          if (href) {
+            // Convert relative URLs to absolute
+            let fullUrl = href;
+            if (href.startsWith('/')) {
+              fullUrl = `https://four.meme${href}`;
+            } else if (!href.startsWith('http://') && !href.startsWith('https://')) {
+              fullUrl = `https://${href}`;
+            }
+            
+            if (fullUrl.startsWith('http://') || fullUrl.startsWith('https://')) {
+              const urlLower = fullUrl.toLowerCase();
+              // Strictly exclude four.meme and all common non-website links
+              if (!urlLower.includes('twitter.com') && 
+                  !urlLower.includes('x.com') && 
+                  !urlLower.includes('telegram.org') && 
+                  !urlLower.includes('t.me') &&
+                  !urlLower.includes('dexscreener.com') &&
+                  !urlLower.includes('bscscan.com') &&
+                  !urlLower.includes('four.meme') &&
+                  !urlLower.includes('fourmeme') &&
+                  !urlLower.match(/four[.\-]?meme/i) &&
+                  !urlLower.includes('github.com') &&
+                  !urlLower.includes('discord.com') &&
+                  !urlLower.includes('medium.com') &&
+                  !urlLower.includes('reddit.com') &&
+                  !urlLower.includes('etherscan.io') &&
+                  !urlLower.includes('solscan.io') &&
+                  !urlLower.includes('solana.com')) {
+                // This might be the website
+                if (!websiteUrl) {
+                  websiteUrl = fullUrl;
+                  return false; // break
+                }
               }
             }
           }
-        }
-      });
+        });
+      }
     }
     
-    // Method 1b: If not found in token section, search all links
+    // Method 1c: Search all links more aggressively - look for external links
     if (!websiteUrl) {
       $('a[href]').each((i, elem) => {
         const href = $(elem).attr('href');
@@ -1315,20 +1367,26 @@ async function getWebsiteFromFourMeme(contractAddress) {
           }
           
           if (fullUrl.startsWith('http://') || fullUrl.startsWith('https://')) {
-            // Skip common non-website links
-            if (!fullUrl.includes('twitter.com') && 
-                !fullUrl.includes('x.com') && 
-                !fullUrl.includes('telegram.org') && 
-                !fullUrl.includes('t.me') &&
-                !fullUrl.includes('dexscreener.com') &&
-                !fullUrl.includes('bscscan.com') &&
-                !fullUrl.includes('four.meme') &&
-                !fullUrl.includes('github.com') &&
-                !fullUrl.includes('discord.com') &&
-                !fullUrl.includes('medium.com') &&
-                !fullUrl.includes('reddit.com')) {
-              // This might be the website
-              if (!websiteUrl) {
+            const urlLower = fullUrl.toLowerCase();
+            // Strictly exclude four.meme and all common non-website links
+            if (!urlLower.includes('twitter.com') && 
+                !urlLower.includes('x.com') && 
+                !urlLower.includes('telegram.org') && 
+                !urlLower.includes('t.me') &&
+                !urlLower.includes('dexscreener.com') &&
+                !urlLower.includes('bscscan.com') &&
+                !urlLower.includes('four.meme') &&
+                !urlLower.includes('fourmeme') &&
+                !urlLower.match(/four[.\-]?meme/i) &&
+                !urlLower.includes('github.com') &&
+                !urlLower.includes('discord.com') &&
+                !urlLower.includes('medium.com') &&
+                !urlLower.includes('reddit.com') &&
+                !urlLower.includes('etherscan.io') &&
+                !urlLower.includes('solscan.io') &&
+                !urlLower.includes('solana.com')) {
+              // This might be the website - prioritize links that look like domains
+              if (!websiteUrl || (fullUrl.match(/^https?:\/\/[^\/]+$/))) {
                 websiteUrl = fullUrl;
               }
             }
@@ -1366,6 +1424,30 @@ async function getWebsiteFromFourMeme(contractAddress) {
     
     const duration = Date.now() - startTime;
     
+    // Final validation: Make absolutely sure we're not returning four.meme
+    if (websiteUrl) {
+      // Check if the URL is actually four.meme (in any form)
+      const urlLower = websiteUrl.toLowerCase();
+      if (urlLower.includes('four.meme') || 
+          urlLower.includes('fourmeme') ||
+          urlLower.match(/four[.\-]?meme/i)) {
+        console.log(`[FourMeme] ⚠️  Rejected four.meme URL: ${websiteUrl}`);
+        websiteUrl = null;
+      } else {
+        // Extract domain to verify it's not four.meme
+        try {
+          const urlObj = new URL(websiteUrl);
+          const hostname = urlObj.hostname.toLowerCase();
+          if (hostname.includes('four.meme') || hostname.includes('fourmeme')) {
+            console.log(`[FourMeme] ⚠️  Rejected four.meme domain: ${hostname}`);
+            websiteUrl = null;
+          }
+        } catch (e) {
+          // URL parsing failed, but we already validated it starts with http/https
+        }
+      }
+    }
+    
     if (websiteUrl) {
       console.log(`[FourMeme] ✅ Found website: ${websiteUrl} - ${duration}ms`);
       return websiteUrl;
@@ -1391,6 +1473,46 @@ async function scrapeWebsite(websiteUrl) {
   if (!websiteUrl) {
     console.log(`[Website] No website URL provided`);
     return null;
+  }
+
+  // Check if URL is x.com or twitter.com - route to Twitter scraper instead
+  const isTwitterUrl = /^(https?:\/\/)?(www\.)?(x\.com|twitter\.com)/i.test(websiteUrl);
+  if (isTwitterUrl) {
+    console.log(`[Website] Detected Twitter/X.com URL, routing to Twitter scraper...`);
+    
+    // Extract username from URL (handles both profile and tweet URLs)
+    // Examples: x.com/username, x.com/username/status/123456, twitter.com/username
+    const twitterMatch = websiteUrl.match(/(?:twitter\.com|x\.com)\/([^\/\?]+)/);
+    const username = twitterMatch ? twitterMatch[1] : null;
+    
+    if (username && username !== 'status' && username !== 'i' && username !== 'search') {
+      // Route to Twitter scraper
+      const twitterData = await getTwitterFromNitter(websiteUrl);
+      
+      if (twitterData && twitterData.tweets && twitterData.tweets.length > 0) {
+        // Convert Twitter data to website-like format for compatibility
+        const topTweet = twitterData.topTweet || twitterData.tweets[0];
+        const tweetTexts = twitterData.tweets.slice(0, 3).map(t => t.text || '').filter(Boolean);
+        const result = {
+          url: websiteUrl,
+          title: `Twitter: @${username}`,
+          metaDesc: (topTweet && topTweet.text) ? topTweet.text.substring(0, 200) : '',
+          shortText: tweetTexts.join('\n\n'),
+          headings: [],
+          twitterData: twitterData, // Include full Twitter data
+        };
+        
+        const duration = Date.now() - startTime;
+        console.log(`[Website] ✅ Twitter data extracted: ${twitterData.tweets.length} tweets - ${duration}ms`);
+        return result;
+      } else {
+        console.log(`[Website] Twitter scraper returned no data for ${websiteUrl}`);
+        return null;
+      }
+    } else {
+      console.log(`[Website] Could not extract valid username from Twitter URL: ${websiteUrl}`);
+      return null;
+    }
   }
 
   // Method 1: Try ScrapingBee first (best for Cloudflare-protected sites)
@@ -1595,7 +1717,7 @@ function generateProjectSummary(tokenData, rugCheckData, contractAddress) {
     return summary;
   }
   
-  const { tokenName, symbol, socials, priceUsd, liquidity } = tokenData;
+  const { tokenName, symbol, socials, priceUsd, liquidity, twitterData, tickerTweets, websiteData } = tokenData;
   
   let summary = `Token ${symbol}`;
   
@@ -1614,6 +1736,39 @@ function generateProjectSummary(tokenData, rugCheckData, contractAddress) {
   }
   
   summary += `.`;
+  
+  // Include website content if available
+  if (websiteData && websiteData.title) {
+    summary += ` The project website (${websiteData.url || 'available'}) indicates: ${websiteData.title}`;
+    if (websiteData.metaDesc) {
+      summary += ` - ${websiteData.metaDesc.substring(0, 200)}`;
+    }
+    if (websiteData.shortText) {
+      summary += ` Additional website content: ${websiteData.shortText.substring(0, 300)}`;
+    }
+    summary += `.`;
+  }
+  
+  // Include Twitter/X content prominently
+  const allTweets = [
+    ...(twitterData?.tweets || []),
+    ...(tickerTweets?.tweets || [])
+  ];
+  
+  if (allTweets.length > 0) {
+    summary += ` Recent Twitter/X posts about this token include:`;
+    // Include up to 5 most relevant tweets with full content
+    allTweets.slice(0, 5).forEach((tweet, idx) => {
+      const tweetText = tweet.text || tweet.content || '';
+      if (tweetText) {
+        summary += ` Post ${idx + 1}: "${tweetText.substring(0, 250)}"`;
+        if (tweet.likes || tweet.retweets) {
+          summary += ` (${tweet.likes || 0} likes, ${tweet.retweets || 0} retweets)`;
+        }
+        summary += `.`;
+      }
+    });
+  }
   
   if (socials && (socials.website || socials.x || socials.telegram)) {
     summary += ` The project maintains`;
@@ -1916,12 +2071,21 @@ Content: ${website.shortText || 'No content available'}
 `;
         }
         
-        // Format Twitter data
-        if (socialData.twitter && socialData.twitter.tweets && socialData.twitter.tweets.length > 0) {
-          const tweets = socialData.twitter.tweets.slice(0, 5).map(t => 
-            `- ${t.text || ''} (${t.likes || 0} likes, ${t.retweets || 0} retweets)`
-          ).join('\n');
-          twitterText = `\nTWITTER/X POSTS:\n${tweets}`;
+        // Format Twitter data - include more tweets with full content
+        const twitterTweets = socialData.twitter?.tweets || [];
+        const tickerTweets = socialData.tickerTweets?.tweets || [];
+        const allTwitterTweets = [...twitterTweets, ...tickerTweets].slice(0, 10); // Include up to 10 tweets
+        
+        if (allTwitterTweets.length > 0) {
+          const tweets = allTwitterTweets.map((t, idx) => {
+            const text = t.text || t.content || '';
+            const likes = t.likes || t.likeCount || 0;
+            const retweets = t.retweets || t.retweetCount || 0;
+            const username = t.username || t.author || 'Unknown';
+            // Include full tweet text, not truncated
+            return `${idx + 1}. @${username}: "${text}" (${likes} likes, ${retweets} retweets)`;
+          }).join('\n');
+          twitterText = `\n\nTWITTER/X POSTS (${allTwitterTweets.length} recent posts):\n${tweets}`;
         }
         
         // Format Telegram data
@@ -2259,13 +2423,16 @@ async function generateSummary({ narrativeClaim, verdict, tokenData, tokenName }
     
     let tweetContext = "";
     if (allTweets.length > 0) {
+      // Include full tweet content, not truncated
       const tweetSummaries = allTweets.map((tweet, idx) => {
         const text = tweet.text || tweet.content || "";
         const likes = tweet.likes || tweet.likeCount || 0;
         const retweets = tweet.retweets || tweet.retweetCount || 0;
-        return `${idx + 1}. "${text.substring(0, 150)}..." (${likes} likes, ${retweets} retweets)`;
+        const username = tweet.username || tweet.author || 'Unknown';
+        // Include full tweet text for better AI analysis
+        return `${idx + 1}. @${username}: "${text}" (${likes} likes, ${retweets} retweets)`;
       }).join("\n");
-      tweetContext = `\n\nRECENT TWEETS ABOUT THIS TOKEN:\n${tweetSummaries}`;
+      tweetContext = `\n\nRECENT TWEETS ABOUT THIS TOKEN (${allTweets.length} posts):\n${tweetSummaries}`;
     }
     
     // Check for official backing
@@ -2631,6 +2798,7 @@ export default async function handler(req, res) {
     const socialContext = JSON.stringify({
       website: tokenData.websiteData,
       twitter: tokenData.twitterData,
+      tickerTweets: tokenData.tickerTweets, // Include ticker search tweets
       telegram: tokenData.telegramData,
     });
     console.log(`[Handler] Prepared social context for narrative extraction`);
@@ -2820,6 +2988,7 @@ export async function performFullScan(contractAddress) {
   const socialContext = JSON.stringify({
     website: tokenData.websiteData,
     twitter: tokenData.twitterData,
+    tickerTweets: tokenData.tickerTweets, // Include ticker search tweets
     telegram: tokenData.telegramData,
   });
   
